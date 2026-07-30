@@ -660,25 +660,32 @@ if (hasFrontendBuild) {
   });
 }
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Plant scanner API running on http://localhost:${PORT}`);
-  console.log("Listening on 0.0.0.0 — reachable via LAN / Dev Tunnel");
-  console.log(
-    `Non-plant filter: reject scores below ${Math.round(MIN_PLANT_SCORE * 100)}%`
-  );
-  console.log(`Disease model: ${DISEASE_MODEL}${HF_TOKEN ? " (HF token set)" : " (no HF token)"}`);
-  if (hasFrontendBuild) {
-    console.log("Serving React build from /build (open this port on phone)");
-  } else {
+// Export for Vercel serverless (api/index.js). Only listen when run directly (npm run server).
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Plant scanner API running on http://localhost:${PORT}`);
+    console.log("Listening on 0.0.0.0 — reachable via LAN / Dev Tunnel");
     console.log(
-      "No /build yet — for phone use: npm run dev (tunnel port 3000) or npm run start:all"
+      `Non-plant filter: reject scores below ${Math.round(MIN_PLANT_SCORE * 100)}%`
     );
-  }
-  if (!PLANTNET_KEY) {
-    console.warn(
-      "Warning: PLANTNET_API_KEY is not set. Get a FREE key at https://my.plantnet.org/"
+    console.log(
+      `Disease model: ${DISEASE_MODEL}${HF_TOKEN ? " (HF token set)" : " (no HF token)"}`
     );
-  } else {
-    console.log("Provider: PlantNet (free plant identification)");
-  }
-});
+    if (hasFrontendBuild) {
+      console.log("Serving React build from /build (open this port on phone)");
+    } else {
+      console.log(
+        "No /build yet — for phone use: npm run dev (tunnel port 3000) or npm run start:all"
+      );
+    }
+    if (!PLANTNET_KEY) {
+      console.warn(
+        "Warning: PLANTNET_API_KEY is not set. Get a FREE key at https://my.plantnet.org/"
+      );
+    } else {
+      console.log("Provider: PlantNet (free plant identification)");
+    }
+  });
+}
