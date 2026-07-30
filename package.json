@@ -7,6 +7,11 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.23.2",
+    "openai": "^7.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-scripts": "5.0.1",
@@ -14,10 +19,16 @@
   },
   "scripts": {
     "start": "react-scripts start",
+    "server": "node server/index.js",
+    "server:dev": "nodemon server/index.js",
+    "dev": "concurrently -n server,client -c blue,green \"npm run server\" \"npm start\"",
+    "dev:watch": "concurrently -n server,client -c blue,green \"npm run server:dev\" \"npm start\"",
     "build": "react-scripts build",
+    "start:all": "npm run build && npm run server",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
+  "proxy": "http://localhost:5000",
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -35,5 +46,15 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
+  },
+  "description": "This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).",
+  "main": "index.js",
+  "devDependencies": {
+    "concurrently": "^10.0.4",
+    "jest": "^27.5.1",
+    "nodemon": "^3.1.14"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
