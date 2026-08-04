@@ -47,13 +47,20 @@ function CapturePanel({
 
       {!showLive && (
         <div className="actions">
-          <button type="button" className="btn primary cam-open-btn" onClick={onStartCamera}>
+          <button
+            type="button"
+            className="btn primary cam-open-btn"
+            onClick={onStartCamera}
+          >
             <span className="cam-open-icon" aria-hidden>
               📷
             </span>
             Open Camera
           </button>
-          <label className="btn cam-upload-btn" style={{ display: "inline-flex", cursor: "pointer" }}>
+          <label
+            className="btn cam-upload-btn"
+            style={{ display: "inline-flex", cursor: "pointer" }}
+          >
             <span aria-hidden>🖼️</span>
             Upload Photo
             <input
@@ -72,7 +79,9 @@ function CapturePanel({
         </div>
       )}
 
-      <div className={`viewport ${showLive ? "viewport-live" : ""} ${showPreview ? "viewport-preview" : ""}`}>
+      <div
+        className={`viewport ${showLive ? "viewport-live" : ""} ${showPreview ? "viewport-preview" : ""}`}
+      >
         {/* Live video — kept in DOM for mobile stream attach */}
         <video
           ref={videoRef}
@@ -137,10 +146,7 @@ function CapturePanel({
 
             <div className={guideClass}>
               <span className="cam-guide-dot" />
-              <span>
-                {liveDetect?.message ||
-                  "I-align ang ISANG halaman sa gitna ng frame"}
-              </span>
+              <span>Scanning...</span>
             </div>
 
             <div className="cam-bottom-bar">
@@ -190,7 +196,11 @@ function CapturePanel({
 
         {/* Scanning overlay while waiting for plant name + description */}
         {showPreview && loading && (
-          <div className="identify-scan-overlay" aria-live="polite" aria-busy="true">
+          <div
+            className="identify-scan-overlay"
+            aria-live="polite"
+            aria-busy="true"
+          >
             <div className="identify-scan-frame" aria-hidden>
               <span className="corner tl" />
               <span className="corner tr" />
@@ -201,7 +211,7 @@ function CapturePanel({
             </div>
             <div className="identify-scan-status">
               <span className="identify-scan-pulse" aria-hidden />
-              <span>Sina-scan ang halaman…</span>
+              <span>Scanning...</span>
             </div>
           </div>
         )}
@@ -237,7 +247,7 @@ function CapturePanel({
                   <i />
                   <i />
                 </span>
-                Sina-scan…
+                Scanning...
               </span>
             ) : liveDetect?.multiPlant ? (
               "Isang halaman lang ang pwedeng i-scan"

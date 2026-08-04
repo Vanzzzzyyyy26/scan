@@ -119,14 +119,14 @@ function ResultPanel({ loading, plant }) {
             <div className="identify-radar-core">🌿</div>
             <div className="identify-radar-sweep" />
           </div>
-          <p className="identify-loading-title">Sina-scan ang halaman…</p>
+          <p className="identify-loading-title">Scanning...</p>
           <p className="identify-loading-sub">
-            Kinikilala ang pangalan at description. Sandali lang.
+            Identifying name and description. Please wait.
           </p>
           <ul className="identify-loading-steps" aria-hidden>
-            <li className="step active">Sinusuri ang larawan</li>
-            <li className="step active delay-1">Hinahanap ang pangalan</li>
-            <li className="step delay-2">Kinukuha ang description</li>
+            <li className="step active">Analyzing image</li>
+            <li className="step active delay-1">Looking up name</li>
+            <li className="step delay-2">Fetching description</li>
           </ul>
         </div>
       )}
