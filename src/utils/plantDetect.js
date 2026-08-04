@@ -9,15 +9,12 @@ const MIN_PLANT_AREA_RATIO = 0.012; // ~1.2% of frame
 const MIN_SECOND_PLANT_RATIO = 0.45; // 2nd blob must be at least 45% of main to count
 const MULTI_MIN_SEPARATION = 0.12; // centers must be this far apart (normalized)
 
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Could not load image for plant detect"));
+    img.onerror = () =>
+      reject(new Error("Could not load image for plant detect"));
     img.src = src;
   });
 }
@@ -67,7 +64,8 @@ function buildPlantMask(imageData) {
     const lum = (r + g + b) / 3;
     const greenBias = g > r + 8 && g > b + 5;
     const strongExg = exg[i] >= threshold;
-    const ok = lum > 15 && lum < 250 && (strongExg || (greenBias && exg[i] > mean));
+    const ok =
+      lum > 15 && lum < 250 && (strongExg || (greenBias && exg[i] > mean));
     mask[i] = ok ? 1 : 0;
   }
 
@@ -172,7 +170,7 @@ function distNorm(a, b, width, height) {
 function countPlantSubjects(blobs, width, height) {
   const frameArea = width * height;
   const significant = blobs.filter(
-    (b) => b.area / frameArea >= MIN_PLANT_AREA_RATIO
+    (b) => b.area / frameArea >= MIN_PLANT_AREA_RATIO,
   );
 
   if (!significant.length) {
