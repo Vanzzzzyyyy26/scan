@@ -1,9 +1,5 @@
 function Footer() {
-  return (
-    <footer className="footer">
-      Powered by PlantNet (free) + Wikipedia + leaf disease model
-    </footer>
-  );
+  return <footer className="footer">vanz </footer>;
 }
 
 export default Footer;
