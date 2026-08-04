@@ -66,7 +66,6 @@ function CapturePanel({
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               hidden
               onChange={onFileSelected}
             />
@@ -155,7 +154,6 @@ function CapturePanel({
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   hidden
                   onChange={onFileSelected}
                 />
