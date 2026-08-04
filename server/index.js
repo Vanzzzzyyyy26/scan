@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const https = require("https");
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
@@ -13,6 +14,7 @@ const {
   formatDiseaseDisplayName,
   assertDiseaseCropAllowed,
 } = require("./cropMatch");
+const { answerPlantChat } = require("./plantChat");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -51,6 +53,190 @@ function dataUrlToBuffer(dataUrl) {
     mime: match[1].toLowerCase(),
     buffer: Buffer.from(match[2], "base64"),
   };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Build a multipart/form-data body without relying on global FormData/Blob.
+ * More reliable for PlantNet from Node on flaky TLS networks.
+ */
+function buildMultipartBody(fields, files) {
+  const boundary = `----PlantScanBoundary${Date.now()}${Math.random()
+    .toString(16)
+    .slice(2)}`;
+  const chunks = [];
+
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+        "utf8"
+      )
+    );
+  }
+
+  for (const file of files) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\nContent-Type: ${file.mime}\r\n\r\n`,
+        "utf8"
+      )
+    );
+    chunks.push(file.buffer);
+    chunks.push(Buffer.from("\r\n", "utf8"));
+  }
+
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, "utf8"));
+  return {
+    boundary,
+    body: Buffer.concat(chunks),
+  };
+}
+
+/**
+ * HTTPS POST with long timeouts + TLS 1.2.
+ * PlantNet (CIRAD host) often resets or stalls on default Node fetch / TLS 1.3
+ * from some networks; native https + TLSv1.2 is more reliable.
+ */
+function httpsRequest({
+  hostname,
+  reqPath,
+  method = "POST",
+  headers = {},
+  body,
+  timeoutMs = 45000,
+}) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname,
+        path: reqPath,
+        method,
+        headers,
+        timeout: timeoutMs,
+        servername: hostname,
+        // Prefer TLS 1.2 — observed more stable against my-api.plantnet.org
+        minVersion: "TLSv1.2",
+        maxVersion: "TLSv1.2",
+      },
+      (res) => {
+        const parts = [];
+        res.on("data", (chunk) => parts.push(chunk));
+        res.on("end", () => {
+          resolve({
+            status: res.statusCode || 0,
+            text: Buffer.concat(parts).toString("utf8"),
+            headers: res.headers,
+          });
+        });
+      }
+    );
+
+    req.on("timeout", () => {
+      req.destroy(
+        new Error(
+          `Connection to ${hostname} timed out after ${Math.round(timeoutMs / 1000)}s`
+        )
+      );
+    });
+    req.on("error", reject);
+
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+function isTransientNetworkError(err) {
+  const code = err?.code || err?.cause?.code || "";
+  const msg = String(err?.message || err || "").toLowerCase();
+  return (
+    code === "ECONNRESET" ||
+    code === "ETIMEDOUT" ||
+    code === "ECONNREFUSED" ||
+    code === "ENOTFOUND" ||
+    code === "EAI_AGAIN" ||
+    code === "UND_ERR_CONNECT_TIMEOUT" ||
+    code === "UND_ERR_SOCKET" ||
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("socket hang up") ||
+    msg.includes("fetch failed") ||
+    msg.includes("econnreset") ||
+    msg.includes("network")
+  );
+}
+
+function plantNetNetworkError(err) {
+  const detail = err?.message || String(err);
+  return new Error(
+    `Cannot reach PlantNet API (${detail}). Check internet / firewall, then try again.`
+  );
+}
+
+/**
+ * Call PlantNet identify with retries. Uses multipart + TLS 1.2 https.
+ */
+async function postPlantNetIdentify(imageBuffer, mime, ext) {
+  const { boundary, body } = buildMultipartBody(
+    { organs: "auto" },
+    [
+      {
+        name: "images",
+        filename: `plant.${ext}`,
+        mime,
+        buffer: imageBuffer,
+      },
+    ]
+  );
+
+  const reqPath =
+    `/v2/identify/${encodeURIComponent(PLANTNET_PROJECT)}` +
+    `?api-key=${encodeURIComponent(PLANTNET_KEY)}` +
+    `&include-related-images=false` +
+    `&no-reject=false` +
+    `&lang=en` +
+    `&nb-results=5`;
+
+  const headers = {
+    "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    "Content-Length": body.length,
+    Accept: "application/json",
+    Connection: "close",
+    "User-Agent": "PlantScanner/1.0",
+  };
+
+  const maxAttempts = 3;
+  let lastErr = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await httpsRequest({
+        hostname: "my-api.plantnet.org",
+        reqPath,
+        method: "POST",
+        headers,
+        body,
+        timeoutMs: 45000,
+      });
+      return res;
+    } catch (err) {
+      lastErr = err;
+      console.warn(
+        `PlantNet attempt ${attempt}/${maxAttempts} failed:`,
+        err?.message || err
+      );
+      if (!isTransientNetworkError(err) || attempt === maxAttempts) {
+        break;
+      }
+      // Brief backoff before retry (network to PlantNet is often flaky)
+      await sleep(800 * attempt);
+    }
+  }
+
+  throw plantNetNetworkError(lastErr);
 }
 
 function notAPlantResult(notes) {
@@ -444,32 +630,21 @@ async function identifyWithPlantNet(imageDataUrl) {
   }
 
   const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
-  const form = new FormData();
-  form.append(
-    "images",
-    new Blob([buffer], { type: mime }),
-    `plant.${ext}`
-  );
-  form.append("organs", "auto");
 
-  const url =
-    `https://my-api.plantnet.org/v2/identify/${encodeURIComponent(PLANTNET_PROJECT)}` +
-    `?api-key=${encodeURIComponent(PLANTNET_KEY)}` +
-    `&include-related-images=false` +
-    `&no-reject=false` +
-    `&lang=en` +
-    `&nb-results=5`;
-
-  const res = await fetch(url, { method: "POST", body: form });
-  const text = await res.text();
+  // Use TLS 1.2 https + retries — global fetch often fails with opaque "fetch failed"
+  // against my-api.plantnet.org on some ISPs / Windows TLS stacks.
+  const res = await postPlantNetIdentify(buffer, mime, ext);
+  const text = res.text || "";
   let data;
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error(`PlantNet returned non-JSON (${res.status}): ${text.slice(0, 200)}`);
+    throw new Error(
+      `PlantNet returned non-JSON (${res.status}): ${text.slice(0, 200)}`
+    );
   }
 
-  if (!res.ok) {
+  if (res.status < 200 || res.status >= 300) {
     const msg =
       data?.message ||
       data?.error ||
@@ -607,9 +782,10 @@ app.get("/api/health", (_req, res) => {
       "Add free PLANTNET_API_KEY to server/.env — https://my.plantnet.org/";
   } else if (!HF_TOKEN) {
     message =
-      "PlantNet ready. Optional HF_TOKEN improves disease detection — https://huggingface.co/settings/tokens";
+      "PlantNet ready. HF_TOKEN = dynamic AI chat + better disease check — https://huggingface.co/settings/tokens";
   } else {
-    message = "PlantNet ready · plant filter + disease check (HF token set)";
+    message =
+      "PlantNet ready · dynamic Plant Buddy (AI + Wikipedia) · disease check";
   }
 
   res.json({
@@ -617,6 +793,7 @@ app.get("/api/health", (_req, res) => {
     hasApiKey: Boolean(PLANTNET_KEY),
     hasDiseaseCheck: true,
     hasHfToken: Boolean(HF_TOKEN),
+    hasDynamicChat: true,
     minPlantScore: MIN_PLANT_SCORE,
     provider: PLANTNET_KEY ? "plantnet" : "none",
     message,
@@ -644,6 +821,28 @@ app.post("/api/identify", async (req, res) => {
     console.error("Identify error:", err);
     res.status(500).json({
       error: err?.message || "Failed to identify plant. Please try again.",
+    });
+  }
+});
+
+/**
+ * Plant/tree chatbot — free HF chat when HF_TOKEN is set, else local tips.
+ * Body: { message, history?, plant? }
+ */
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { message, history, plant } = req.body || {};
+    const result = await answerPlantChat({
+      message,
+      history,
+      plant: plant && typeof plant === "object" ? plant : null,
+      hfToken: HF_TOKEN,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("Chat error:", err);
+    res.status(400).json({
+      error: err?.message || "Chat failed. Subukan ulit.",
     });
   }
 });

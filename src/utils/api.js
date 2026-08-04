@@ -19,9 +19,9 @@ export function statusPillText(apiReady) {
     return "Server OK — kailangan ng FREE PlantNet key (my.plantnet.org)";
   }
   if (!apiReady.hasHfToken) {
-    return "PlantNet ready · Disease check mas reliable kung may free HF_TOKEN";
+    return "PlantNet ready · mag-set ng HF_TOKEN para dynamic AI chat";
   }
-  return "Server ready · PlantNet + disease check";
+  return "Server ready · PlantNet + dynamic AI chat";
 }
 
 async function readJsonSafe(res) {
@@ -73,5 +73,30 @@ export async function identifyPlant(imageDataUrl) {
     throw new Error(data.error || "Identification failed");
   }
   return data.plant;
+}
+
+/**
+ * POST /api/chat — plant/tree Q&A (uses scanned plant as context when provided).
+ * @returns {Promise<{ reply: string, provider?: string, offline?: boolean, note?: string }>}
+ */
+export async function chatAboutPlant({ message, history = [], plant = null }) {
+  const res = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history, plant }),
+  });
+
+  const data = await readJsonSafe(res);
+  if (!data) {
+    throw new Error(
+      res.status === 405
+        ? "Chat API hindi available sa host na ito."
+        : `Walang sagot mula sa server (${res.status}). Siguraduhing naka-run ang backend.`
+    );
+  }
+  if (!res.ok) {
+    throw new Error(data.error || "Chat failed");
+  }
+  return data;
 }
 

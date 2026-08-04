@@ -111,9 +111,23 @@ function ResultPanel({ loading, plant }) {
       <h2>2. Resulta</h2>
 
       {loading && (
-        <div className="loading-card">
-          <div className="spinner" />
-          <p>Kinikilala kung halaman/puno, tapos sine-check ang sakit...</p>
+        <div className="loading-card identify-loading" aria-live="polite" aria-busy="true">
+          <div className="identify-radar" aria-hidden>
+            <div className="identify-radar-ring ring-1" />
+            <div className="identify-radar-ring ring-2" />
+            <div className="identify-radar-ring ring-3" />
+            <div className="identify-radar-core">🌿</div>
+            <div className="identify-radar-sweep" />
+          </div>
+          <p className="identify-loading-title">Sina-scan ang halaman…</p>
+          <p className="identify-loading-sub">
+            Kinikilala ang pangalan at description. Sandali lang.
+          </p>
+          <ul className="identify-loading-steps" aria-hidden>
+            <li className="step active">Sinusuri ang larawan</li>
+            <li className="step active delay-1">Hinahanap ang pangalan</li>
+            <li className="step delay-2">Kinukuha ang description</li>
+          </ul>
         </div>
       )}
 

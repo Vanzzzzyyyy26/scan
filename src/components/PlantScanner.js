@@ -3,6 +3,7 @@ import Hero from "./Hero";
 import CapturePanel from "./CapturePanel";
 import ResultPanel from "./ResultPanel";
 import Footer from "./Footer";
+import PlantChatbot from "./PlantChatbot";
 import { fetchHealth, identifyPlant as identifyPlantApi } from "../utils/api";
 import { fileToDataUrl, toJpegDataUrl } from "../utils/image";
 import {
@@ -10,17 +11,23 @@ import {
   cameraErrorMessage,
   captureFrameFromVideo,
 } from "../utils/camera";
+import {
+  analyzeVideoFrame,
+  analyzePlantRegions,
+} from "../utils/plantDetect";
 
 /**
- * Main plant scanner screen: camera/upload, identify API, and results.
- * App.js only mounts this component.
+ * Main plant scanner screen: camera/upload, single-plant gate, identify.
+ * Preview stays natural (no green highlight paint on the photo).
  */
 function PlantScanner() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const detectTimerRef = useRef(null);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [liveDetect, setLiveDetect] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [plant, setPlant] = useState(null);
@@ -32,6 +39,9 @@ function PlantScanner() {
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      if (detectTimerRef.current) {
+        clearInterval(detectTimerRef.current);
       }
     };
   }, []);
@@ -66,6 +76,37 @@ function PlantScanner() {
     };
   }, [cameraOn]);
 
+  // Live plant detection loop while camera is on
+  useEffect(() => {
+    if (detectTimerRef.current) {
+      clearInterval(detectTimerRef.current);
+      detectTimerRef.current = null;
+    }
+
+    if (!cameraOn) return undefined;
+
+    let busy = false;
+    detectTimerRef.current = setInterval(async () => {
+      if (busy || !videoRef.current) return;
+      busy = true;
+      try {
+        const result = await analyzeVideoFrame(videoRef.current);
+        setLiveDetect(result);
+      } catch {
+        // ignore frame errors
+      } finally {
+        busy = false;
+      }
+    }, 450);
+
+    return () => {
+      if (detectTimerRef.current) {
+        clearInterval(detectTimerRef.current);
+        detectTimerRef.current = null;
+      }
+    };
+  }, [cameraOn]);
+
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -77,16 +118,40 @@ function PlantScanner() {
     setCameraOn(false);
   }, []);
 
+  const processImage = useCallback(async (dataUrl) => {
+    setPreview(dataUrl);
+    setPlant(null);
+    setError("");
+
+    try {
+      const analysis = await analyzePlantRegions(dataUrl);
+      setLiveDetect(analysis);
+
+      if (analysis.multiPlant) {
+        setError(
+          "May dalawa o higit pang halaman sa larawan. Mag-focus sa ISANG halaman lang para ma-scan."
+        );
+      } else if (analysis.noPlant) {
+        setError(
+          "Walang malinaw na halaman sa larawan. Subukan ulit na mas malapit at maliwanag."
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      setLiveDetect(null);
+    }
+  }, []);
+
   const startCamera = async () => {
     setError("");
     setPlant(null);
     setPreview(null);
+    setLiveDetect(null);
 
     try {
       stopCamera();
       const stream = await requestCameraStream();
       streamRef.current = stream;
-      // Mount <video> first; useEffect attaches stream + play()
       setCameraOn(true);
     } catch (err) {
       console.error(err);
@@ -96,11 +161,17 @@ function PlantScanner() {
 
   const capturePhoto = async () => {
     try {
+      // Block capture when multi-plant is clearly detected live
+      if (liveDetect?.multiPlant) {
+        setError(
+          "May dalawang halaman sa frame. I-focus ang ISANG halaman, tapos Capture ulit."
+        );
+        return;
+      }
+
       const dataUrl = await captureFrameFromVideo(videoRef.current);
-      setPreview(dataUrl);
       stopCamera();
-      setPlant(null);
-      setError("");
+      await processImage(dataUrl);
     } catch (err) {
       setError(err.message || "Camera is not ready yet.");
     }
@@ -118,7 +189,7 @@ function PlantScanner() {
     try {
       const raw = await fileToDataUrl(file);
       const jpeg = await toJpegDataUrl(raw);
-      setPreview(jpeg);
+      await processImage(jpeg);
     } catch (err) {
       setError(err.message || "Failed to load image");
     }
@@ -127,6 +198,20 @@ function PlantScanner() {
   const identifyPlant = async () => {
     if (!preview) {
       setError("Kumuha muna o mag-upload ng larawan ng halaman.");
+      return;
+    }
+
+    if (liveDetect?.multiPlant) {
+      setError(
+        "Hindi pwedeng i-scan kung may dalawa o higit pang halaman. Isang halaman lang."
+      );
+      return;
+    }
+
+    if (liveDetect?.noPlant) {
+      setError(
+        "Walang malinaw na halaman. Mag-upload o kumuha ng mas malinaw na larawan."
+      );
       return;
     }
 
@@ -141,7 +226,7 @@ function PlantScanner() {
       console.error(err);
       setError(
         err.message ||
-          "May error sa pag-scan. Siguraduhing naka-run ang server at may PLANTNET_API_KEY.",
+          "May error sa pag-scan. Siguraduhing naka-run ang server at may PLANTNET_API_KEY."
       );
     } finally {
       setLoading(false);
@@ -151,6 +236,7 @@ function PlantScanner() {
   const resetAll = () => {
     stopCamera();
     setPreview(null);
+    setLiveDetect(null);
     setPlant(null);
     setError("");
   };
@@ -166,7 +252,9 @@ function PlantScanner() {
           preview={preview}
           loading={loading}
           error={error}
+          liveDetect={liveDetect}
           onStartCamera={startCamera}
+          onStopCamera={stopCamera}
           onFileSelected={onFileSelected}
           onCapturePhoto={capturePhoto}
           onReset={resetAll}
@@ -177,6 +265,9 @@ function PlantScanner() {
       </main>
 
       <Footer />
+
+      {/* Floating chatbot — expands when tapped; uses scanned plant as context */}
+      <PlantChatbot plant={plant} />
     </div>
   );
 }
