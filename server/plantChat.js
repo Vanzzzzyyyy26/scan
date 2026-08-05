@@ -239,6 +239,109 @@ const PLANT_KNOWLEDGE = {
   menta: { alias: "mint" },
 };
 
+const PH_LOCAL_PLANT_NAMES = [
+  "abaka",
+  "agoho",
+  "akapulko",
+  "akasyang dilaw",
+  "akasyang pula",
+  "alibangbang",
+  "alokon",
+  "ampalaya",
+  "anahaw",
+  "atis",
+  "avocado",
+  "balimbing",
+  "balete",
+  "banaba",
+  "bani",
+  "bawang",
+  "bignay",
+  "bitaog",
+  "botong",
+  "bougainvillea",
+  "cacao",
+  "cadena de amor",
+  "chico",
+  "dalandan",
+  "dama de noche",
+  "dao",
+  "dita",
+  "duhat",
+  "gabi",
+  "gumamela",
+  "guyabano",
+  "ilang-ilang",
+  "ipil",
+  "ipil-ipil",
+  "kadyos",
+  "kakaw",
+  "kalabasa",
+  "kamachile",
+  "kamias",
+  "kamote",
+  "kamoteng kahoy",
+  "kape",
+  "kapok",
+  "kasoy",
+  "katmon",
+  "kawayan",
+  "kundol",
+  "lagundi",
+  "langka",
+  "lansones",
+  "lanzones",
+  "lipote",
+  "luya",
+  "makahiya",
+  "makopa",
+  "malapapaya",
+  "mayana",
+  "molave",
+  "mustasa",
+  "okra",
+  "oregano",
+  "pako",
+  "palay",
+  "pandan",
+  "patola",
+  "pechay",
+  "pinya",
+  "pipino",
+  "rambutan",
+  "repolyo",
+  "sabila",
+  "saluyot",
+  "sambong",
+  "sampalok",
+  "santan",
+  "sayote",
+  "siniguelas",
+  "sibuyas",
+  "suha",
+  "tabebuia",
+  "talisay",
+  "tanglad",
+  "tibig",
+  "tsaang gubat",
+  "ube",
+  "yakal",
+  "yerba buena",
+];
+
+function matchesPlantName(text, plantNames) {
+  const q = String(text || "").toLowerCase();
+  const names = [...plantNames].sort((a, b) => b.length - a.length);
+
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[^\\p{L}])${escaped}([^\\p{L}]|$)`, "iu");
+    if (re.test(q)) return name;
+  }
+
+  return null;
+}
+
 function resolvePlantEntry(key) {
   let entry = PLANT_KNOWLEDGE[key];
   if (!entry) return null;
@@ -265,6 +368,18 @@ function detectMentionedPlant(text, scannedPlant) {
       const entry = resolvePlantEntry(key);
       if (entry) return { source: "question", key, ...entry };
     }
+  }
+
+  const localPlantName = matchesPlantName(q, PH_LOCAL_PLANT_NAMES);
+  if (localPlantName) {
+    return {
+      source: "question",
+      key: localPlantName,
+      name: capitalizeWords(localPlantName),
+      scientific: null,
+      care: null,
+      plant: null,
+    };
   }
 
   // Free-form: "paano alagaan ang X" / "about X plant"
@@ -485,6 +600,8 @@ async function fetchDynamicPlantContext(userText, plant, detected) {
 function buildSystemPrompt(plant, wiki = null) {
   const lines = [
     "Ikaw ay Plant Buddy — friendly at helpful chatbot tungkol sa puno at halaman.",
+    "STRICT SCOPE: Puno at halaman lang ang sasagutin. Kasama rito ang plant/tree ID, care, watering, sunlight, soil, propagation, pruning, pests, diseases, ecology, habitat, botany, gardening, crops, flowers, herbs, shrubs, fruits, and plant safety.",
+    "Kapag ang tanong ay hindi tungkol sa puno o halaman, politely tumanggi at sabihin: Plant Buddy can only help with plants and trees. Then invite the user to ask a plant/tree question.",
     "IMPORTANT: Sagutin nang NATURAL at conversational (parang kaibigan na expert), HINDI naka-JSON, HINDI bullet dump ng fields, HINDI template.",
     "Gumawa ng orihinal na sagot base sa context at tanong — huwag mag-copy paste ng fixed script.",
     "Pwedeng sumagot kahit WALANG na-scan na halaman.",
@@ -645,6 +762,62 @@ function isFilipinoQuestion(q) {
  * Build a natural, dynamic paragraph from live Wikipedia + question intent.
  * Not a static JSON dump — reads like a short helpful answer.
  */
+function isGreetingOnly(q) {
+  return /^(hi|hello|hey|yo|kumusta|musta|good\s*(morning|afternoon|evening)|magandang\s*(umaga|hapon|gabi))[\s!.,?]*$/i.test(
+    String(q || "").trim()
+  );
+}
+
+function hasKnownPlantName(message) {
+  return Boolean(
+    matchesPlantName(message, Object.keys(PLANT_KNOWLEDGE)) ||
+      matchesPlantName(message, PH_LOCAL_PLANT_NAMES)
+  );
+}
+
+function hasPlantCareIntentWithName(message) {
+  const q = String(message || "").toLowerCase().trim();
+  const patterns = [
+    /\b(?:paano|paaano)\s+(?:alagaan|magtanim|patubuin|paramihin|i-propagate|propagate|diligan|gamutin)\s+(?:ang|ng|si|yung|itong|iyan|yan)?\s+[\p{L}][\p{L}\s-]{1,50}/iu,
+    /\b(?:alaga|pag-aalaga|pagtatanim|pagdidilig|pagpaparami|propagation|care|watering|soil|lupa|pataba|abono|peste|sakit)\s+(?:ng|sa|for)?\s+[\p{L}][\p{L}\s-]{1,50}/iu,
+    /\b(?:how\s+to\s+(?:care\s+for|grow|plant|propagate|water|treat)|care\s+for|watering|soil\s+for)\s+[a-z][a-z\s-]{1,50}/i,
+    /\b(?:bakit|why)\s+.*\b(?:dahon|leaf|leaves|ugat|root|roots|bulaklak|flower|flowers|lanta|wilting|dilaw|yellow|nabubulok|rot)\b/i,
+  ];
+
+  return patterns.some((re) => re.test(q));
+}
+
+function isPlantTopicMessage(message, plant = null) {
+  const q = String(message || "").toLowerCase().trim();
+  if (!q) return false;
+  if (isGreetingOnly(q)) return true;
+
+  if (hasKnownPlantName(q)) return true;
+  if (hasPlantCareIntentWithName(q)) return true;
+
+  const plantTerms =
+    /\b(plant|plants|tree|trees|flower|flowers|leaf|leaves|root|roots|stem|branch|branches|bark|trunk|seed|seeds|seedling|sapling|sprout|bud|fruit|fruits|vegetable|vegetables|crop|crops|herb|herbs|shrub|shrubs|vine|vines|grass|garden|gardening|botany|botanical|photosynthesis|chlorophyll|pollen|pollination|compost|mulch|fertilizer|soil|potting|repot|propagate|propagation|cutting|cuttings|prune|pruning|water|watering|sunlight|shade|indoor|outdoor|pest|pests|insect|insects|disease|diseases|fungus|fungal|blight|mildew|rot|wilting|yellowing|succulent|cactus)\b/i;
+  const filipinoPlantTerms =
+    /\b(halaman|puno|dahon|ugat|sanga|tangkay|balat|buto|binhi|punla|usbong|bulaklak|prutas|gulay|pananim|damo|hardin|paghahardin|lupa|abono|pataba|compost|dilig|diligan|tubig|araw|liwanag|lilim|peste|insekto|sakit|lanta|dilaw|mabulok|tanim|magtanim|alagaan|alaga|putulin|pruning)\b/i;
+
+  if (plantTerms.test(q) || filipinoPlantTerms.test(q)) return true;
+
+  if (plant && plant.isPlant !== false) {
+    const followUpCareTerms =
+      /\b(it|this|that|ito|iyan|yan|siya|ano|what|identify|pangalan|name|details|detalye|info|impormasyon|more|tungkol|about|alaga|care|water|watering|dilig|light|liwanag|sun|araw|soil|lupa|fertilize|pataba|pest|sakit|disease|yellow|dilaw|wilting|lanta|grow|plant|magtanim)\b/i;
+    return followUpCareTerms.test(q);
+  }
+
+  return false;
+}
+
+function outOfScopeReply(message) {
+  const fil = isFilipinoQuestion(message);
+  return fil
+    ? "Plant Buddy can only help with plants and trees. Tanungin mo ako tungkol sa halaman o puno, tulad ng pag-aalaga, pagdidilig, lupa, liwanag, peste, sakit, o pagtatanim."
+    : "Plant Buddy can only help with plants and trees. Ask me about plant or tree care, watering, soil, sunlight, pests, diseases, planting, or identification.";
+}
+
 function replyFromWiki(userText, plant, detected, wiki) {
   const q = String(userText || "").toLowerCase().trim();
   const fil = isFilipinoQuestion(q);
@@ -847,6 +1020,17 @@ async function answerPlantChat({ message, history = [], plant = null, hfToken = 
     throw new Error("Masyadong mahaba ang tanong (max 2000 characters).");
   }
 
+  if (!isPlantTopicMessage(userMessage, plant)) {
+    return {
+      reply: outOfScopeReply(userMessage),
+      provider: "scope-filter",
+      model: null,
+      offline: true,
+      source: "scope-filter",
+      note: "Plant/tree questions only",
+    };
+  }
+
   const detected = detectMentionedPlant(userMessage, plant);
 
   // Always pull LIVE Wikipedia context first (dynamic, not static JSON)
@@ -929,6 +1113,7 @@ module.exports = {
   buildSystemPrompt,
   localPlantReply,
   detectMentionedPlant,
+  isPlantTopicMessage,
   fetchDynamicPlantContext,
   replyFromWiki,
   PLANT_KNOWLEDGE,

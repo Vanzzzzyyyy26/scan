@@ -75,6 +75,50 @@ export async function identifyPlant(imageDataUrl) {
   return data.plant;
 }
 
+export async function fetchScanHistory(limit = 100) {
+  const res = await fetch(`${API_BASE}/api/history?limit=${encodeURIComponent(limit)}`);
+  const data = await readJsonSafe(res);
+  if (!data) {
+    throw new Error(`Walang history response mula sa server (${res.status}).`);
+  }
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to load scan history");
+  }
+  return Array.isArray(data.scans) ? data.scans : [];
+}
+
+export async function saveScanHistory({ plant, imageDataUrl }) {
+  const res = await fetch(`${API_BASE}/api/history`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plant, imageDataUrl }),
+  });
+
+  const data = await readJsonSafe(res);
+  if (!data) {
+    throw new Error(`Walang save response mula sa server (${res.status}).`);
+  }
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to save scan history");
+  }
+  return data.saved;
+}
+
+export async function deleteScanHistory(id) {
+  const res = await fetch(`${API_BASE}/api/history/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  const data = await readJsonSafe(res);
+  if (!data) {
+    throw new Error(`Walang delete response mula sa server (${res.status}).`);
+  }
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to delete scan history");
+  }
+  return Boolean(data.deleted);
+}
+
 /**
  * POST /api/chat — plant/tree Q&A (uses scanned plant as context when provided).
  * @returns {Promise<{ reply: string, provider?: string, offline?: boolean, note?: string }>}
@@ -99,4 +143,3 @@ export async function chatAboutPlant({ message, history = [], plant = null }) {
   }
   return data;
 }
-

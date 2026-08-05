@@ -1,30 +1,59 @@
+function StatusIcon({ status }) {
+  if (status === "healthy") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="m5 12 4 4 10-10" />
+      </svg>
+    );
+  }
+
+  if (status === "diseased") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3 2.8 19h18.4L12 3Z" />
+        <path d="M12 8v5" />
+        <path d="M12 16.5v.1" />
+      </svg>
+    );
+  }
+
+  if (status === "unavailable") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M7 7h10v10H7z" />
+        <path d="M9 3v4" />
+        <path d="M15 3v4" />
+        <path d="M9 17v4" />
+        <path d="M15 17v4" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 17h.01" />
+      <path d="M12 13a3 3 0 1 0-3-3" />
+      <path d="M12 22a10 10 0 1 0-10-10 10 10 0 0 0 10 10Z" />
+    </svg>
+  );
+}
+
 function DiseaseCard({ disease }) {
   if (!disease) return null;
 
   const status = String(disease.status || "unknown").toLowerCase();
   const title =
     status === "healthy"
-      ? "Malusog"
+      ? "Mukhang healthy"
       : status === "diseased"
         ? "May posibleng sakit"
         : status === "uncertain"
-          ? "Hindi sigurado"
+          ? "Hindi pa sigurado"
           : status === "not_covered"
             ? "Hindi sakop ng disease model"
             : status === "unavailable"
               ? "Hindi available ang disease check"
               : "Health check";
-
-  const icon =
-    status === "healthy"
-      ? "✅"
-      : status === "diseased"
-        ? "⚠️"
-        : status === "not_covered"
-          ? "ℹ️"
-          : status === "unavailable"
-            ? "🔌"
-            : "🩺";
 
   const showDiseaseName =
     disease.name &&
@@ -32,11 +61,14 @@ function DiseaseCard({ disease }) {
     status !== "unavailable" &&
     status !== "not_covered";
 
+  const hasAlternatives =
+    Array.isArray(disease.alternatives) && disease.alternatives.length > 0;
+
   return (
     <div className={`disease-card disease-${status}`}>
       <div className="disease-header">
         <span className="disease-icon" aria-hidden="true">
-          {icon}
+          <StatusIcon status={status} />
         </span>
         <div>
           <p className="disease-eyebrow">Kalagayan ng dahon</p>
@@ -47,7 +79,9 @@ function DiseaseCard({ disease }) {
         )}
       </div>
 
-      {showDiseaseName && <p className="disease-name">{disease.name}</p>}
+      {showDiseaseName && (
+        <p className="disease-name">Possible: {disease.name}</p>
+      )}
 
       {disease.summary && <p className="disease-summary">{disease.summary}</p>}
 
@@ -57,15 +91,18 @@ function DiseaseCard({ disease }) {
         </p>
       )}
 
-      {Array.isArray(disease.alternatives) && disease.alternatives.length > 0 && (
-        <ul className="disease-alts">
-          {disease.alternatives.map((alt, i) => (
-            <li key={i}>
-              {alt.name}
-              {alt.confidence != null ? ` (${alt.confidence}%)` : ""}
-            </li>
-          ))}
-        </ul>
+      {hasAlternatives && (
+        <div className="disease-alt-block">
+          <p className="disease-alt-title">Iba pang possible na nakita:</p>
+          <ul className="disease-alts">
+            {disease.alternatives.map((alt, i) => (
+              <li key={i}>
+                {alt.name}
+                {alt.confidence != null ? ` (${alt.confidence}%)` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

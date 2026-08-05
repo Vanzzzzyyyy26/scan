@@ -4,7 +4,12 @@ import CapturePanel from "./CapturePanel";
 import ResultPanel from "./ResultPanel";
 import Footer from "./Footer";
 import PlantChatbot from "./PlantChatbot";
-import { fetchHealth, identifyPlant as identifyPlantApi } from "../utils/api";
+import ScanHistory from "./ScanHistory";
+import {
+  fetchHealth,
+  identifyPlant as identifyPlantApi,
+  saveScanHistory,
+} from "../utils/api";
 import { fileToDataUrl, toJpegDataUrl } from "../utils/image";
 import {
   requestCameraStream,
@@ -32,11 +37,20 @@ function PlantScanner() {
   const [error, setError] = useState("");
   const [plant, setPlant] = useState(null);
   const [apiReady, setApiReady] = useState(null);
+  const [view, setView] = useState(() =>
+    window.location.hash === "#history" ? "history" : "scanner"
+  );
 
   useEffect(() => {
     fetchHealth().then(setApiReady);
 
+    const onHashChange = () => {
+      setView(window.location.hash === "#history" ? "history" : "scanner");
+    };
+    window.addEventListener("hashchange", onHashChange);
+
     return () => {
+      window.removeEventListener("hashchange", onHashChange);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
@@ -222,6 +236,14 @@ function PlantScanner() {
     try {
       const result = await identifyPlantApi(preview);
       setPlant(result);
+      if (result?.isPlant !== false) {
+        try {
+          const historyImage = await toJpegDataUrl(preview, 640, 0.72);
+          await saveScanHistory({ plant: result, imageDataUrl: historyImage });
+        } catch (historyErr) {
+          console.warn("History save skipped:", historyErr);
+        }
+      }
     } catch (err) {
       console.error(err);
       setError(
@@ -241,28 +263,62 @@ function PlantScanner() {
     setError("");
   };
 
+  const clearResult = () => {
+    setPlant(null);
+    setError("");
+  };
+
+  const openHistory = () => {
+    stopCamera();
+    window.location.hash = "history";
+    setView("history");
+  };
+
+  const openScanner = () => {
+    if (window.location.hash === "#history") {
+      window.history.pushState("", document.title, window.location.pathname + window.location.search);
+    }
+    setView("scanner");
+  };
+
+  const openSavedPlant = (savedPlant) => {
+    setPlant(savedPlant);
+    setPreview(null);
+    setLiveDetect(null);
+    setError("");
+    openScanner();
+  };
+
   return (
     <div className="app">
-      <Hero apiReady={apiReady} />
+      <Hero
+        apiReady={apiReady}
+        onOpenHistory={view === "history" ? openScanner : openHistory}
+        historyActive={view === "history"}
+      />
 
-      <main className="layout">
-        <CapturePanel
-          videoRef={videoRef}
-          cameraOn={cameraOn}
-          preview={preview}
-          loading={loading}
-          error={error}
-          liveDetect={liveDetect}
-          onStartCamera={startCamera}
-          onStopCamera={stopCamera}
-          onFileSelected={onFileSelected}
-          onCapturePhoto={capturePhoto}
-          onReset={resetAll}
-          onIdentify={identifyPlant}
-        />
+      {view === "history" ? (
+        <ScanHistory onBack={openScanner} onSelectPlant={openSavedPlant} />
+      ) : (
+        <main className="layout">
+          <CapturePanel
+            videoRef={videoRef}
+            cameraOn={cameraOn}
+            preview={preview}
+            loading={loading}
+            error={error}
+            liveDetect={liveDetect}
+            onStartCamera={startCamera}
+            onStopCamera={stopCamera}
+            onFileSelected={onFileSelected}
+            onCapturePhoto={capturePhoto}
+            onReset={resetAll}
+            onIdentify={identifyPlant}
+          />
 
-        <ResultPanel loading={loading} plant={plant} />
-      </main>
+          <ResultPanel loading={loading} plant={plant} onClear={clearResult} />
+        </main>
+      )}
 
       <Footer />
 

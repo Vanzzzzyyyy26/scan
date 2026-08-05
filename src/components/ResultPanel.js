@@ -105,10 +105,26 @@ function PlantResult({ plant }) {
   );
 }
 
-function ResultPanel({ loading, plant }) {
+function ScanLeafIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M20.4 3.6C12.8 3.9 6.8 7.7 4.2 13.7c-.9 2.2-.7 4.3.5 5.6 1.2 1.3 3.2 1.5 5.4.6 5.9-2.5 9.8-8.5 10.3-16.3Z" />
+      <path d="M4.8 19.2c3.8-5.1 7.9-8.2 12.7-9.8" />
+    </svg>
+  );
+}
+
+function ResultPanel({ loading, plant, onClear }) {
   return (
     <section className="panel result-panel">
-      <h2>2. Resulta</h2>
+      <div className="result-panel-title">
+        <h2>2. Resulta</h2>
+        {!loading && plant && (
+          <button type="button" className="result-clear-btn" onClick={onClear}>
+            Clear result
+          </button>
+        )}
+      </div>
 
       {loading && (
         <div className="loading-card identify-loading" aria-live="polite" aria-busy="true">
@@ -116,7 +132,9 @@ function ResultPanel({ loading, plant }) {
             <div className="identify-radar-ring ring-1" />
             <div className="identify-radar-ring ring-2" />
             <div className="identify-radar-ring ring-3" />
-            <div className="identify-radar-core">🌿</div>
+            <div className="identify-radar-core">
+              <ScanLeafIcon />
+            </div>
             <div className="identify-radar-sweep" />
           </div>
           <p className="identify-loading-title">Scanning...</p>

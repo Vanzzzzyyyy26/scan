@@ -15,6 +15,12 @@ const {
   assertDiseaseCropAllowed,
 } = require("./cropMatch");
 const { answerPlantChat } = require("./plantChat");
+const {
+  hasDbConfig,
+  listScanHistory,
+  saveScanHistory,
+  deleteScanHistory,
+} = require("./historyDb");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -794,6 +800,7 @@ app.get("/api/health", (_req, res) => {
     hasDiseaseCheck: true,
     hasHfToken: Boolean(HF_TOKEN),
     hasDynamicChat: true,
+    hasHistoryDb: hasDbConfig(),
     minPlantScore: MIN_PLANT_SCORE,
     provider: PLANTNET_KEY ? "plantnet" : "none",
     message,
@@ -829,6 +836,80 @@ app.post("/api/identify", async (req, res) => {
  * Plant/tree chatbot — free HF chat when HF_TOKEN is set, else local tips.
  * Body: { message, history?, plant? }
  */
+app.get("/api/history", async (req, res) => {
+  if (!hasDbConfig()) {
+    return res.status(503).json({
+      error:
+        "MySQL history database is not configured. Add MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE to server/.env.",
+    });
+  }
+
+  try {
+    const scans = await listScanHistory(req.query.limit || 100);
+    res.json({ scans });
+  } catch (err) {
+    console.error("History list error:", err);
+    res.status(500).json({
+      error: err?.message || "Failed to load scan history.",
+    });
+  }
+});
+
+app.post("/api/history", async (req, res) => {
+  if (!hasDbConfig()) {
+    return res.status(503).json({
+      error:
+        "MySQL history database is not configured. Add MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE to server/.env.",
+    });
+  }
+
+  try {
+    const { plant, imageDataUrl } = req.body || {};
+    if (!plant || typeof plant !== "object") {
+      return res.status(400).json({ error: "Missing plant result." });
+    }
+    if (
+      !imageDataUrl ||
+      typeof imageDataUrl !== "string" ||
+      !imageDataUrl.startsWith("data:image/")
+    ) {
+      return res.status(400).json({ error: "Missing image data URL." });
+    }
+
+    const saved = await saveScanHistory({ plant, imageDataUrl });
+    res.status(201).json({ saved });
+  } catch (err) {
+    console.error("History save error:", err);
+    res.status(500).json({
+      error: err?.message || "Failed to save scan history.",
+    });
+  }
+});
+
+app.delete("/api/history/:id", async (req, res) => {
+  if (!hasDbConfig()) {
+    return res.status(503).json({
+      error:
+        "MySQL history database is not configured. Add MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE to server/.env.",
+    });
+  }
+
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid history id." });
+    }
+
+    const deleted = await deleteScanHistory(id);
+    res.json({ deleted });
+  } catch (err) {
+    console.error("History delete error:", err);
+    res.status(500).json({
+      error: err?.message || "Failed to delete scan history.",
+    });
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   try {
     const { message, history, plant } = req.body || {};
