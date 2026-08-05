@@ -12,16 +12,49 @@ function hasDbConfig() {
   );
 }
 
+function useSsl() {
+  const flag = String(process.env.MYSQL_SSL || process.env.DB_SSL || "")
+    .trim()
+    .toLowerCase();
+  if (flag === "1" || flag === "true" || flag === "yes") return true;
+  if (flag === "0" || flag === "false" || flag === "no") return false;
+
+  // Cloud MySQL (PlanetScale, Railway, Aiven, TiDB, etc.) usually needs SSL.
+  // Skip for local hosts so local XAMPP/WAMP still works without SSL.
+  const host = String(
+    process.env.MYSQL_HOST || process.env.DB_HOST || ""
+  ).toLowerCase();
+  if (!host || host === "localhost" || host === "127.0.0.1") return false;
+  return true;
+}
+
 function getPool() {
   if (!hasDbConfig()) return null;
   if (pool) return pool;
+
+  // Vercel/serverless: keep pool tiny so we don't exhaust free-tier connections.
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const connectionLimit = isServerless
+    ? 1
+    : Number(process.env.MYSQL_CONNECTION_LIMIT || 10);
+
+  const base = {
+    waitForConnections: true,
+    connectionLimit,
+    enableKeepAlive: !isServerless,
+    // Fail fast if remote DB is unreachable from Vercel
+    connectTimeout: 10000,
+  };
+
+  if (useSsl()) {
+    base.ssl = { rejectUnauthorized: false };
+  }
 
   const uri = process.env.MYSQL_URL || process.env.DATABASE_URL;
   if (uri) {
     pool = mysql.createPool({
       uri,
-      waitForConnections: true,
-      connectionLimit: 10,
+      ...base,
     });
     return pool;
   }
@@ -32,8 +65,7 @@ function getPool() {
     user: process.env.MYSQL_USER || process.env.DB_USER || "root",
     password: process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || "",
     database: process.env.MYSQL_DATABASE || process.env.DB_DATABASE || "db_puno",
-    waitForConnections: true,
-    connectionLimit: 10,
+    ...base,
   });
   return pool;
 }

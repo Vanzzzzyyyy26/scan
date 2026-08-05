@@ -836,11 +836,15 @@ app.post("/api/identify", async (req, res) => {
  * Plant/tree chatbot — free HF chat when HF_TOKEN is set, else local tips.
  * Body: { message, history?, plant? }
  */
+const MYSQL_CONFIG_HELP =
+  process.env.VERCEL
+    ? "MySQL history database is not configured on Vercel. Add MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE (or MYSQL_URL) in Vercel → Project → Settings → Environment Variables, then Redeploy. Do not use localhost — use a cloud MySQL host."
+    : "MySQL history database is not configured. Add MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE to server/.env.";
+
 app.get("/api/history", async (req, res) => {
   if (!hasDbConfig()) {
     return res.status(503).json({
-      error:
-        "MySQL history database is not configured. Add MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE to server/.env.",
+      error: MYSQL_CONFIG_HELP,
     });
   }
 
@@ -858,8 +862,7 @@ app.get("/api/history", async (req, res) => {
 app.post("/api/history", async (req, res) => {
   if (!hasDbConfig()) {
     return res.status(503).json({
-      error:
-        "MySQL history database is not configured. Add MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE to server/.env.",
+      error: MYSQL_CONFIG_HELP,
     });
   }
 
@@ -889,8 +892,7 @@ app.post("/api/history", async (req, res) => {
 app.delete("/api/history/:id", async (req, res) => {
   if (!hasDbConfig()) {
     return res.status(503).json({
-      error:
-        "MySQL history database is not configured. Add MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE to server/.env.",
+      error: MYSQL_CONFIG_HELP,
     });
   }
 
