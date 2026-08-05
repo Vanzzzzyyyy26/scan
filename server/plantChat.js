@@ -1,16 +1,3 @@
-/**
- * Plant/tree chatbot — DYNAMIC answers from APIs (not static JSON tips).
- *
- * Priority:
- *  1. Hugging Face chat (live LLM) + live Wikipedia context
- *  2. Wikipedia REST summary shaped into a natural reply
- *  3. Small local knowledge only as last resort
- *
- * Works WITH or WITHOUT a plant scan. PlantNet is image ID only.
- */
-
-// Free HF Router models that currently accept chat/completions for free tokens.
-// Order = try first. Override with CHAT_MODEL in server/.env
 const DEFAULT_CHAT_MODELS = [
   process.env.CHAT_MODEL,
   "Qwen/Qwen2.5-7B-Instruct",
@@ -23,38 +10,41 @@ const DEFAULT_CHAT_MODELS = [
 const WIKI_UA = "PlantScanner/1.0 (educational plant chat; local app)";
 
 /**
- * Common plants (PH + popular houseplants). Used when user names a plant
- * in the question even without scanning.
- * Keys = search aliases (lowercase).
+ * Common plant aliases for topic detection and API search only.
+ * Do not use these care/plant fields as final chat answers.
  */
 const PLANT_KNOWLEDGE = {
   mangga: {
     name: "Mangga (Mango)",
     scientific: "Mangifera indica",
     care: "Full sun (6–8 oras), deep watering 1–2×/linggo kapag bata pa (mas madalang kapag mature). Well-draining sandy loam. Iwasan ang basang ugat. Prune ang dead branches after fruiting.",
-    plant: "Magtanim ng seed o grafted seedling sa maaraw na lugar, butas ~60cm deep, compost sa ilalim. Space ~8–10m mula sa ibang puno. Protektahan ang batang puno sa malakas na hangin.",
+    plant:
+      "Magtanim ng seed o grafted seedling sa maaraw na lugar, butas ~60cm deep, compost sa ilalim. Space ~8–10m mula sa ibang puno. Protektahan ang batang puno sa malakas na hangin.",
   },
   mango: { alias: "mangga" },
   kalamansi: {
     name: "Kalamansi",
     scientific: "Citrus × microcarpa",
     care: "Full sun hanggang partial shade. Dilig kapag tuyo ang top soil; huwag basain ang ugat. Regular compost. Bantayan ang leaf miners at scale insects.",
-    plant: "Magtanim sa pot o lupa na may drainage. Mas gusto ng slightly acidic soil. Pwede sa container sa balkonahe kung may sapat na araw.",
+    plant:
+      "Magtanim sa pot o lupa na may drainage. Mas gusto ng slightly acidic soil. Pwede sa container sa balkonahe kung may sapat na araw.",
   },
   calamansi: { alias: "kalamansi" },
-  "calamondin": { alias: "kalamansi" },
+  calamondin: { alias: "kalamansi" },
   saging: {
     name: "Saging (Banana)",
     scientific: "Musa spp.",
     care: "Maraming tubig + rich organic soil. Full sun hanggang light shade. Regular mulch at potassium-rich fertilizer. Alisin ang dry leaves.",
-    plant: "Magtanim ng sucker/pup sa butas na may compost, keep moist. Space ~2–3m. Gusto ng mainit at humid na klima (bagay sa PH).",
+    plant:
+      "Magtanim ng sucker/pup sa butas na may compost, keep moist. Space ~2–3m. Gusto ng mainit at humid na klima (bagay sa PH).",
   },
   banana: { alias: "saging" },
   niyog: {
     name: "Niyog / Coconut",
     scientific: "Cocos nucifera",
     care: "Full sun, sandy coastal-type soil OK. Deep watering sa unang taon. Mature trees tolerante sa drought. Bantayan ang rhinoceros beetle at scale.",
-    plant: "Magtanim ng germinated nut sa maaraw na espasyo (malayo sa bahay/linya). Butas malalim, well-draining.",
+    plant:
+      "Magtanim ng germinated nut sa maaraw na espasyo (malayo sa bahay/linya). Butas malalim, well-draining.",
   },
   coconut: { alias: "niyog" },
   coco: { alias: "niyog" },
@@ -62,40 +52,46 @@ const PLANT_KNOWLEDGE = {
     name: "Santol",
     scientific: "Sandoricum koetjape",
     care: "Full sun, regular watering kapag bata. Well-draining soil + compost. Prune para sa shape.",
-    plant: "Seed o seedling sa open area; space ~8m. Tropical, bagay sa PH climate.",
+    plant:
+      "Seed o seedling sa open area; space ~8m. Tropical, bagay sa PH climate.",
   },
   bayabas: {
     name: "Bayabas (Guava)",
     scientific: "Psidium guajava",
     care: "Full sun, moderate water. Tolerante sa iba't ibang lupa. Prune after harvest. Bantayan ang fruit fly.",
-    plant: "Madaling magtanim mula sa seed o cutting. Space ~4–5m. Mabilis tumubo sa PH.",
+    plant:
+      "Madaling magtanim mula sa seed o cutting. Space ~4–5m. Mabilis tumubo sa PH.",
   },
   guava: { alias: "bayabas" },
   papaya: {
     name: "Papaya / Melon tree",
     scientific: "Carica papaya",
     care: "Full sun, regular water, well-draining soil. Ayaw ng waterlogged roots. Fertilize lightly tuwing buwan kapag fruiting.",
-    plant: "Direktang seed sa maaraw na lugar. Space ~2–3m. Fast-growing; protektahan sa malakas na hangin.",
+    plant:
+      "Direktang seed sa maaraw na lugar. Space ~2–3m. Fast-growing; protektahan sa malakas na hangin.",
   },
   kapaya: { alias: "papaya" },
   malunggay: {
     name: "Malunggay (Moringa)",
     scientific: "Moringa oleifera",
     care: "Full sun, light watering (drought-tolerant kapag established). Poor soil OK. Regular harvest ng dahon para mag-branch.",
-    plant: "Seed o cutting sa open ground. Mabilis tumubo. Iwasan ang sobrang basang lupa.",
+    plant:
+      "Seed o cutting sa open ground. Mabilis tumubo. Iwasan ang sobrang basang lupa.",
   },
   moringa: { alias: "malunggay" },
   kangkong: {
     name: "Kangkong",
     scientific: "Ipomoea aquatica",
     care: "Maraming tubig / moist soil, full sun hanggang partial. Harvest stems regularly para tuloy-tuloy ang shoot.",
-    plant: "Cutting sa basang lupa o container na laging moist. Mabilis — days to harvest tips.",
+    plant:
+      "Cutting sa basang lupa o container na laging moist. Mabilis — days to harvest tips.",
   },
   kamatis: {
     name: "Kamatis (Tomato)",
     scientific: "Solanum lycopersicum",
     care: "Full sun (6+ oras), consistent watering sa base (huwag basain ang dahon). Stake/cage. Well-draining fertile soil. Bantayan ang early blight at whiteflies.",
-    plant: "Seedling transplant after 3–4 linggo. Space ~50–60cm. Mulch para panatilihin ang moisture.",
+    plant:
+      "Seedling transplant after 3–4 linggo. Space ~50–60cm. Mulch para panatilihin ang moisture.",
   },
   tomato: { alias: "kamatis" },
   talong: {
@@ -109,13 +105,15 @@ const PLANT_KNOWLEDGE = {
     name: "Sitaw (String bean)",
     scientific: "Vigna unguiculata sesquipedalis",
     care: "Full sun, moderate water, trellis para umakyat. Ayaw ng sobrang nitrogen (dahon > bulaklak).",
-    plant: "Direktang seed sa lupa o pot + trellis. Space ~20–30cm. Harvest pods young.",
+    plant:
+      "Direktang seed sa lupa o pot + trellis. Space ~20–30cm. Harvest pods young.",
   },
   monstera: {
     name: "Monstera",
     scientific: "Monstera deliciosa",
     care: "Bright indirect light (iwas direct hot sun). Diligan kapag tuyo ang top 2–3cm. Well-draining aroid mix. Wipe leaves; support pole para sa aerial roots.",
-    plant: "Cutting na may node sa water o soil. Keep warm at humid. Ideal indoor plant.",
+    plant:
+      "Cutting na may node sa water o soil. Keep warm at humid. Ideal indoor plant.",
   },
   monstra: { alias: "monstera" },
   "snake plant": {
@@ -137,7 +135,8 @@ const PLANT_KNOWLEDGE = {
     name: "Orchid (Orchidaceae)",
     scientific: "Orchidaceae",
     care: "Bright indirect light, high humidity. Water kapag almost dry ang medium (bark). Huwag iwanan sa basang baso. Good airflow.",
-    plant: "Repot sa orchid bark, hindi ordinary garden soil. Phalaenopsis common sa bahay.",
+    plant:
+      "Repot sa orchid bark, hindi ordinary garden soil. Phalaenopsis common sa bahay.",
   },
   orkid: { alias: "orchid" },
   orkide: { alias: "orchid" },
@@ -145,21 +144,38 @@ const PLANT_KNOWLEDGE = {
     name: "Aloe Vera",
     scientific: "Aloe vera",
     care: "Bright light / some direct sun. Rare watering — succulent, ayaw ng basang lupa. Well-draining cactus mix.",
-    plant: "Pups/offsets mula sa mother plant. Madaling alagaan indoor o outdoor.",
+    plant:
+      "Pups/offsets mula sa mother plant. Madaling alagaan indoor o outdoor.",
   },
   aloe: { alias: "aloe vera" },
   rosas: {
     name: "Rosas (Rose)",
     scientific: "Rosa spp.",
     care: "Full sun (5–6+ oras), regular water sa base, rich soil. Prune dead wood. Bantayan ang aphids at black spot — airflow importante.",
-    plant: "Bare-root o potted rose sa maaraw na lugar. Mulch, huwag idikit sa stem.",
+    plant:
+      "Bare-root o potted rose sa maaraw na lugar. Mulch, huwag idikit sa stem.",
   },
   rose: { alias: "rosas" },
+  gumamela: {
+    name: "Gumamela (Hibiscus)",
+    scientific: "Hibiscus rosa-sinensis",
+    care: "Full sun to partial shade, regular water, and well-draining soil. Remove spent flowers and avoid overwatering the roots.",
+    plant:
+      "Magtanim sa maaraw na lugar. Keep soil moist but not waterlogged; deadhead spent blooms para mas maraming bulaklak.",
+  },
+  "ipil ipil": {
+    name: "Ipil-ipil (Leucaena)",
+    scientific: "Leucaena leucocephala",
+    care: "Full sun, moderate water, and well-draining soil. Tolerates poor soil and drought once established.",
+    plant:
+      "Magtanim ng binhing nag-de-germinate o seedling sa open ground. Huwag i-overwater kapag matanda na.",
+  },
   sampaguita: {
     name: "Sampaguita",
     scientific: "Jasminum sambac",
     care: "Full sun hanggang partial, regular water, slightly acidic well-draining soil. Prune after flowering waves.",
-    plant: "Cutting sa pot o hardin. National flower — bagay sa mainit na klima ng PH.",
+    plant:
+      "Cutting sa pot o hardin. National flow  er — bagay sa mainit na klima ng PH.",
   },
   jasmine: { alias: "sampaguita" },
   "peace lily": {
@@ -173,7 +189,8 @@ const PLANT_KNOWLEDGE = {
     name: "Cactus",
     scientific: "Cactaceae",
     care: "Maraming araw, rare watering (bawat 2–4 linggo depende sa init). Gravelly/cactus soil. Sobrang tubig = #1 killer.",
-    plant: "Well-draining pot + cactus mix. Huwag basahin ang katawan; dilig sa base.",
+    plant:
+      "Well-draining pot + cactus mix. Huwag basahin ang katawan; dilig sa base.",
   },
   kaktus: { alias: "cactus" },
   succulent: {
@@ -195,26 +212,29 @@ const PLANT_KNOWLEDGE = {
     care: "Bright indirect light, consistent watering (huwag sobra). Ayaw ng frequent moving — madaling mag-drop ng dahon.",
     plant: "Cutting o nursery plant sa well-draining mix.",
   },
-  "narra": {
+  narra: {
     name: "Narra",
     scientific: "Pterocarpus indicus",
     care: "Full sun, moderate water kapag bata. National tree — large canopy, kailangan ng malawak na espasyo.",
-    plant: "Seedling sa open ground, malayo sa buildings. Long-term shade tree.",
+    plant:
+      "Seedling sa open ground, malayo sa buildings. Long-term shade tree.",
   },
-  "acacia": {
+  acacia: {
     name: "Acacia / Rain tree (common PH street trees vary)",
     scientific: "Fabaceae (various)",
     care: "Full sun, drought-tolerant kapag mature. Deep watering sa unang taon.",
-    plant: "Open space — malaki ang ugat at canopy. Huwag isiksik sa bakuran na maliit.",
+    plant:
+      "Open space — malaki ang ugat at canopy. Huwag isiksik sa bakuran na maliit.",
   },
-  "lemon": {
+  lemon: {
     name: "Lemon / Dayap-type citrus",
     scientific: "Citrus limon",
     care: "Full sun, regular water, well-draining slightly acidic soil. Feed citrus fertilizer. Bantayan ang scale at leaf miner.",
-    plant: "Container o ground; drainage critical. Grafted trees mas mabilis magbunga.",
+    plant:
+      "Container o ground; drainage critical. Grafted trees mas mabilis magbunga.",
   },
   dayap: { alias: "lemon" },
-  "chili": {
+  chili: {
     name: "Sili / Chili pepper",
     scientific: "Capsicum spp.",
     care: "Full sun, moderate consistent water, warm weather. Harvest regularly para mas maraming bunga.",
@@ -223,14 +243,14 @@ const PLANT_KNOWLEDGE = {
   sili: { alias: "chili" },
   siling: { alias: "chili" },
   pepper: { alias: "chili" },
-  "basil": {
+  basil: {
     name: "Basil / Balanoy",
     scientific: "Ocimum basilicum",
     care: "Full sun, keep soil lightly moist, pinch tips para bushy. Ayaw ng malamig na gabi.",
     plant: "Seed sa pot; harvest leaves often. Companion sa kamatis.",
   },
   balanoy: { alias: "basil" },
-  "mint": {
+  mint: {
     name: "Mint / Yerba buena-type herbs",
     scientific: "Mentha spp.",
     care: "Partial sun, moist soil. Aggressive spreader — best sa sariling pot.",
@@ -238,109 +258,6 @@ const PLANT_KNOWLEDGE = {
   },
   menta: { alias: "mint" },
 };
-
-const PH_LOCAL_PLANT_NAMES = [
-  "abaka",
-  "agoho",
-  "akapulko",
-  "akasyang dilaw",
-  "akasyang pula",
-  "alibangbang",
-  "alokon",
-  "ampalaya",
-  "anahaw",
-  "atis",
-  "avocado",
-  "balimbing",
-  "balete",
-  "banaba",
-  "bani",
-  "bawang",
-  "bignay",
-  "bitaog",
-  "botong",
-  "bougainvillea",
-  "cacao",
-  "cadena de amor",
-  "chico",
-  "dalandan",
-  "dama de noche",
-  "dao",
-  "dita",
-  "duhat",
-  "gabi",
-  "gumamela",
-  "guyabano",
-  "ilang-ilang",
-  "ipil",
-  "ipil-ipil",
-  "kadyos",
-  "kakaw",
-  "kalabasa",
-  "kamachile",
-  "kamias",
-  "kamote",
-  "kamoteng kahoy",
-  "kape",
-  "kapok",
-  "kasoy",
-  "katmon",
-  "kawayan",
-  "kundol",
-  "lagundi",
-  "langka",
-  "lansones",
-  "lanzones",
-  "lipote",
-  "luya",
-  "makahiya",
-  "makopa",
-  "malapapaya",
-  "mayana",
-  "molave",
-  "mustasa",
-  "okra",
-  "oregano",
-  "pako",
-  "palay",
-  "pandan",
-  "patola",
-  "pechay",
-  "pinya",
-  "pipino",
-  "rambutan",
-  "repolyo",
-  "sabila",
-  "saluyot",
-  "sambong",
-  "sampalok",
-  "santan",
-  "sayote",
-  "siniguelas",
-  "sibuyas",
-  "suha",
-  "tabebuia",
-  "talisay",
-  "tanglad",
-  "tibig",
-  "tsaang gubat",
-  "ube",
-  "yakal",
-  "yerba buena",
-];
-
-function matchesPlantName(text, plantNames) {
-  const q = String(text || "").toLowerCase();
-  const names = [...plantNames].sort((a, b) => b.length - a.length);
-
-  for (const name of names) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`(^|[^\\p{L}])${escaped}([^\\p{L}]|$)`, "iu");
-    if (re.test(q)) return name;
-  }
-
-  return null;
-}
 
 function resolvePlantEntry(key) {
   let entry = PLANT_KNOWLEDGE[key];
@@ -362,7 +279,7 @@ function detectMentionedPlant(text, scannedPlant) {
     // word-ish match
     const re = new RegExp(
       `(^|[^a-zà-ü])${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-zà-ü]|$)`,
-      "i"
+      "i",
     );
     if (re.test(q)) {
       const entry = resolvePlantEntry(key);
@@ -370,19 +287,8 @@ function detectMentionedPlant(text, scannedPlant) {
     }
   }
 
-  const localPlantName = matchesPlantName(q, PH_LOCAL_PLANT_NAMES);
-  if (localPlantName) {
-    return {
-      source: "question",
-      key: localPlantName,
-      name: capitalizeWords(localPlantName),
-      scientific: null,
-      care: null,
-      plant: null,
-    };
-  }
-
-  // Free-form: "paano alagaan ang X" / "about X plant"
+  // Free-form: only extract from clearly plant-care patterns.
+  // Keep this narrow so non-plant questions do not bypass the scope guard.
   const freeName = extractPlantNameFromQuestion(q);
   if (freeName) {
     return {
@@ -447,6 +353,32 @@ function detectMentionedPlant(text, scannedPlant) {
   return null;
 }
 
+function isPlantRelatedText(text) {
+  const q = String(text || "").toLowerCase();
+  if (!q.trim()) return false;
+
+  if (detectKnownPlant(q)) {
+    return true;
+  }
+
+  return /\b(?:plant|tree|halaman|puno|dahon|bulaklak|ugat|lupa|tubig|dilig|abono|pataba|sakit|peste|fungus|flower|leaf|soil|light|shade|tanim|magtanim|alaga|care|fruit|seed|garden|propagate|bloom|flowering|bonsai|fern|orchid|cactus|herb|weed|crop|seedling|sprout|stem|branch|bark|root|mulch|watering)\b/i.test(
+    q,
+  );
+}
+
+function detectKnownPlant(text) {
+  const q = String(text || "").toLowerCase();
+  const keys = Object.keys(PLANT_KNOWLEDGE).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    const re = new RegExp(
+      `(^|[^a-zà-ü])${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-zà-ü]|$)`,
+      "i",
+    );
+    if (re.test(q) && resolvePlantEntry(key)) return true;
+  }
+  return false;
+}
+
 function capitalizeWords(s) {
   return String(s || "")
     .split(/\s+/)
@@ -458,9 +390,9 @@ function capitalizeWords(s) {
 /** Pull a plant name from common question patterns when not in dictionary. */
 function extractPlantNameFromQuestion(q) {
   const patterns = [
-    /(?:paano\s+(?:alagaan|magtanim|taniman)\s+(?:ng\s+|ang\s+)?|alaga\s+(?:ng\s+|sa\s+)?|about\s+|care\s+for\s+|how\s+to\s+(?:care\s+for|plant|grow)\s+)([a-zà-ü0-9][a-zà-ü0-9\s-]{1,40}?)(?:\?|$|\.|!|,)/i,
-    /(?:ano\s+(?:ang|ba\s+ang)\s+)([a-zà-ü0-9][a-zà-ü0-9\s-]{1,30}?)(?:\?|$)/i,
-    /(?:tungkol\s+sa\s+)([a-zà-ü0-9][a-zà-ü0-9\s-]{1,30}?)(?:\?|$|\.)/i,
+    /(?:paano\s+(?:alagaan|magtanim|taniman)\s+(?:ng\s+|ang\s+)?|alaga\s+(?:ng\s+|sa\s+)?|care\s+for\s+|how\s+to\s+(?:care\s+for|plant)\s+)([a-zà-ü0-9][a-zà-ü0-9\s-]{1,40}?)(?:\?|$|\.|!|,)/i,
+    /(?:about\s+)([a-zà-ü0-9][a-zà-ü0-9\s-]{1,30}?\s+(?:plant|tree|halaman|puno))(?:\?|$|\.|!|,)/i,
+    /(?:tungkol\s+sa\s+)([a-zà-ü0-9][a-zà-ü0-9\s-]{1,30}?\s+(?:plant|tree|halaman|puno))(?:\?|$|\.)/i,
   ];
   const stop = new Set([
     "halaman",
@@ -557,8 +489,23 @@ async function fetchDynamicPlantContext(userText, plant, detected) {
   if (plant?.commonNameFilipino) push(plant.commonNameFilipino);
 
   // Also try free-form name from question
-  const free = extractPlantNameFromQuestion(String(userText || "").toLowerCase());
+  const free = extractPlantNameFromQuestion(
+    String(userText || "").toLowerCase(),
+  );
   if (free) push(free);
+
+  const q = String(userText || "").toLowerCase();
+  if (!candidates.length) {
+    if (/dilaw|yellow|chlorosis|naninilaw/.test(q)) push("Chlorosis");
+    if (/peste|pest|insekto|insect|aphid|scale/.test(q)) push("Pest control");
+    if (/sakit|disease|fungus|blight|lanta|wilting/.test(q))
+      push("Plant pathology");
+    if (/dilig|water|tubig|moisture/.test(q)) push("Irrigation");
+    if (/lupa|soil|compost|fertiliz|abono|pataba/.test(q))
+      push("Soil fertility");
+    if (/magtanim|tanim|propagate|cutting|seedling/.test(q))
+      push("Plant propagation");
+  }
 
   for (const name of candidates) {
     for (const lang of ["en", "tl"]) {
@@ -600,10 +547,10 @@ async function fetchDynamicPlantContext(userText, plant, detected) {
 function buildSystemPrompt(plant, wiki = null) {
   const lines = [
     "Ikaw ay Plant Buddy — friendly at helpful chatbot tungkol sa puno at halaman.",
-    "STRICT SCOPE: Puno at halaman lang ang sasagutin. Kasama rito ang plant/tree ID, care, watering, sunlight, soil, propagation, pruning, pests, diseases, ecology, habitat, botany, gardening, crops, flowers, herbs, shrubs, fruits, and plant safety.",
-    "Kapag ang tanong ay hindi tungkol sa puno o halaman, politely tumanggi at sabihin: Plant Buddy can only help with plants and trees. Then invite the user to ask a plant/tree question.",
     "IMPORTANT: Sagutin nang NATURAL at conversational (parang kaibigan na expert), HINDI naka-JSON, HINDI bullet dump ng fields, HINDI template.",
     "Gumawa ng orihinal na sagot base sa context at tanong — huwag mag-copy paste ng fixed script.",
+    "SCOPE: Sumagot lang tungkol sa halaman, puno, gardening, soil, watering, light, propagation, pests, diseases, habitat, at plant facts.",
+    "Kapag ang tanong ay hindi tungkol sa halaman o puno, politely tumanggi at ibalik ang usapan sa plant/tree topic.",
     "Pwedeng sumagot kahit WALANG na-scan na halaman.",
     "Sumagot sa Filipino kung Filipino ang tanong; English kung English; mixed OK kung mixed ang tanong.",
     "Maikli, malinaw, at useful (2–6 sentences). Focus: alaga, liwanag, tubig, lupa, pagtatanim, sakit, habitat, facts.",
@@ -616,7 +563,7 @@ function buildSystemPrompt(plant, wiki = null) {
   if (wiki?.description) {
     lines.push("");
     lines.push(
-      `LIVE reference mula sa Wikipedia tungkol sa "${wiki.name}" (gamitin bilang base ng sagot, huwag i-dump nang buo):`
+      `LIVE reference mula sa Wikipedia tungkol sa "${wiki.name}" (gamitin bilang base ng sagot, huwag i-dump nang buo):`,
     );
     lines.push(String(wiki.description).slice(0, 900));
     if (wiki.url) lines.push(`Source: ${wiki.url}`);
@@ -629,7 +576,9 @@ function buildSystemPrompt(plant, wiki = null) {
       plant.scientificName ||
       "hindi pa na-identify";
     lines.push("");
-    lines.push("Optional context mula sa huling plant scan ng user (gamitin kung relevant):");
+    lines.push(
+      "Optional context mula sa huling plant scan ng user (gamitin kung relevant):",
+    );
     lines.push(`- Common name: ${plant.commonName || "—"}`);
     if (plant.commonNameFilipino) {
       lines.push(`- Filipino name: ${plant.commonNameFilipino}`);
@@ -643,15 +592,15 @@ function buildSystemPrompt(plant, wiki = null) {
     }
     if (plant.disease?.name) {
       lines.push(
-        `- Possible leaf disease: ${plant.disease.name} (${plant.disease.status || "check"})`
+        `- Possible leaf disease: ${plant.disease.name} (${plant.disease.status || "check"})`,
       );
     }
     lines.push(
-      `Kapag relevant ang tanong, i-prioritize ang tips tungkol sa "${name}".`
+      `Kapag relevant ang tanong, i-prioritize ang tips tungkol sa "${name}".`,
     );
   } else {
     lines.push(
-      "Walang active scan. Sagutin pa rin nang buo ang tanong gamit ang general plant knowledge + Wikipedia context."
+      "Walang active scan. Sagutin pa rin nang buo ang tanong gamit ang general plant knowledge + Wikipedia context.",
     );
   }
 
@@ -667,7 +616,7 @@ function normalizeMessages(raw, plant, wiki = null) {
         m &&
         (m.role === "user" || m.role === "assistant") &&
         typeof m.content === "string" &&
-        m.content.trim()
+        m.content.trim(),
     )
     .slice(-12)
     .map((m) => ({
@@ -731,7 +680,7 @@ async function callHfChat(messages, token) {
 
         if (reply && String(reply).trim()) {
           return {
-            reply: String(reply).trim(),
+            reply: normalizeAssistantReply(reply),
             provider: "huggingface",
             model,
           };
@@ -752,9 +701,53 @@ function displayName(detected, wiki) {
   return detected.scanName || detected.name || null;
 }
 
+function normalizeAssistantReply(reply) {
+  const text = String(reply || "").trim();
+  if (!text) return text;
+
+  const unwrapped = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  if (!/^[\[{]/.test(unwrapped)) return text;
+
+  try {
+    const parsed = JSON.parse(unwrapped);
+    const natural = naturalizeJsonReply(parsed);
+    return natural || text;
+  } catch {
+    return text;
+  }
+}
+
+function naturalizeJsonReply(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    return value.map(naturalizeJsonReply).filter(Boolean).join("\n\n");
+  }
+  if (typeof value !== "object") return String(value);
+
+  const direct =
+    value.reply ||
+    value.answer ||
+    value.response ||
+    value.message ||
+    value.content ||
+    value.summary ||
+    value.advice;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+  return Object.values(value)
+    .map(naturalizeJsonReply)
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function isFilipinoQuestion(q) {
   return /[àáâãäåæçèéêëìíîïñòóôõöùúûü]|(\b(ang|ng|sa|mga|para|paano|ano|bakit|kung|ito|yan|yung|po|ba|ako|mo|naman|halaman|puno|dilig|alagaan|magtanim)\b)/i.test(
-    q
+    q,
   );
 }
 
@@ -762,92 +755,45 @@ function isFilipinoQuestion(q) {
  * Build a natural, dynamic paragraph from live Wikipedia + question intent.
  * Not a static JSON dump — reads like a short helpful answer.
  */
-function isGreetingOnly(q) {
-  return /^(hi|hello|hey|yo|kumusta|musta|good\s*(morning|afternoon|evening)|magandang\s*(umaga|hapon|gabi))[\s!.,?]*$/i.test(
-    String(q || "").trim()
-  );
-}
-
-function hasKnownPlantName(message) {
-  return Boolean(
-    matchesPlantName(message, Object.keys(PLANT_KNOWLEDGE)) ||
-      matchesPlantName(message, PH_LOCAL_PLANT_NAMES)
-  );
-}
-
-function hasPlantCareIntentWithName(message) {
-  const q = String(message || "").toLowerCase().trim();
-  const patterns = [
-    /\b(?:paano|paaano)\s+(?:alagaan|magtanim|patubuin|paramihin|i-propagate|propagate|diligan|gamutin)\s+(?:ang|ng|si|yung|itong|iyan|yan)?\s+[\p{L}][\p{L}\s-]{1,50}/iu,
-    /\b(?:alaga|pag-aalaga|pagtatanim|pagdidilig|pagpaparami|propagation|care|watering|soil|lupa|pataba|abono|peste|sakit)\s+(?:ng|sa|for)?\s+[\p{L}][\p{L}\s-]{1,50}/iu,
-    /\b(?:how\s+to\s+(?:care\s+for|grow|plant|propagate|water|treat)|care\s+for|watering|soil\s+for)\s+[a-z][a-z\s-]{1,50}/i,
-    /\b(?:bakit|why)\s+.*\b(?:dahon|leaf|leaves|ugat|root|roots|bulaklak|flower|flowers|lanta|wilting|dilaw|yellow|nabubulok|rot)\b/i,
-  ];
-
-  return patterns.some((re) => re.test(q));
-}
-
-function isPlantTopicMessage(message, plant = null) {
-  const q = String(message || "").toLowerCase().trim();
-  if (!q) return false;
-  if (isGreetingOnly(q)) return true;
-
-  if (hasKnownPlantName(q)) return true;
-  if (hasPlantCareIntentWithName(q)) return true;
-
-  const plantTerms =
-    /\b(plant|plants|tree|trees|flower|flowers|leaf|leaves|root|roots|stem|branch|branches|bark|trunk|seed|seeds|seedling|sapling|sprout|bud|fruit|fruits|vegetable|vegetables|crop|crops|herb|herbs|shrub|shrubs|vine|vines|grass|garden|gardening|botany|botanical|photosynthesis|chlorophyll|pollen|pollination|compost|mulch|fertilizer|soil|potting|repot|propagate|propagation|cutting|cuttings|prune|pruning|water|watering|sunlight|shade|indoor|outdoor|pest|pests|insect|insects|disease|diseases|fungus|fungal|blight|mildew|rot|wilting|yellowing|succulent|cactus)\b/i;
-  const filipinoPlantTerms =
-    /\b(halaman|puno|dahon|ugat|sanga|tangkay|balat|buto|binhi|punla|usbong|bulaklak|prutas|gulay|pananim|damo|hardin|paghahardin|lupa|abono|pataba|compost|dilig|diligan|tubig|araw|liwanag|lilim|peste|insekto|sakit|lanta|dilaw|mabulok|tanim|magtanim|alagaan|alaga|putulin|pruning)\b/i;
-
-  if (plantTerms.test(q) || filipinoPlantTerms.test(q)) return true;
-
-  if (plant && plant.isPlant !== false) {
-    const followUpCareTerms =
-      /\b(it|this|that|ito|iyan|yan|siya|ano|what|identify|pangalan|name|details|detalye|info|impormasyon|more|tungkol|about|alaga|care|water|watering|dilig|light|liwanag|sun|araw|soil|lupa|fertilize|pataba|pest|sakit|disease|yellow|dilaw|wilting|lanta|grow|plant|magtanim)\b/i;
-    return followUpCareTerms.test(q);
-  }
-
-  return false;
-}
-
-function outOfScopeReply(message) {
-  const fil = isFilipinoQuestion(message);
-  return fil
-    ? "Plant Buddy can only help with plants and trees. Tanungin mo ako tungkol sa halaman o puno, tulad ng pag-aalaga, pagdidilig, lupa, liwanag, peste, sakit, o pagtatanim."
-    : "Plant Buddy can only help with plants and trees. Ask me about plant or tree care, watering, soil, sunlight, pests, diseases, planting, or identification.";
-}
-
 function replyFromWiki(userText, plant, detected, wiki) {
-  const q = String(userText || "").toLowerCase().trim();
+  const q = String(userText || "")
+    .toLowerCase()
+    .trim();
   const fil = isFilipinoQuestion(q);
   const name = displayName(detected, wiki);
   const extract = wiki?.description ? String(wiki.description).trim() : "";
   // Keep 1–2 sentences from wiki so reply stays readable
   const wikiBit = extract
-    ? extract.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ")
+    ? extract
+        .split(/(?<=[.!?])\s+/)
+        .slice(0, 2)
+        .join(" ")
     : "";
 
   const wantsPlantHow =
     /paano\s+magtanim|how\s+to\s+plant|magtanim|taniman|pagtatanim|propagate|cutting|seedling|magtan[ií]m|grow/.test(
-      q
+      q,
     );
   const wantsCare =
-    /alagaan|alaga|care|paano\s+alaga|maintain|tips|gabay|how\s+to\s+care/.test(q);
+    /alagaan|alaga|care|paano\s+alaga|maintain|tips|gabay|how\s+to\s+care/.test(
+      q,
+    );
   const wantsWater = /tubig|water|dilig|irig|moisture|basa|tuy[oô]/.test(q);
-  const wantsLight = /araw|sun|liwanag|light|shade|dilim|indoor|outdoor/.test(q);
+  const wantsLight = /araw|sun|liwanag|light|shade|dilim|indoor|outdoor/.test(
+    q,
+  );
   const wantsSoil = /lupa|soil|potting|compost|abono|fertiliz|pataba/.test(q);
   const wantsDisease =
     /sakit|disease|blight|fungus|pest|insekto|insect|dilaw|yellow|lanta|wilting|mabulok|root\s*rot/.test(
-      q
+      q,
     );
   const wantsId =
     /ano\s+(itong|ito|yang|yung)\s+(halaman|puno)|what\s+(plant|tree)|identify|anong\s+(halaman|puno)|pangalan\s+nito/.test(
-      q
+      q,
     );
   const isGreeting =
     /^(hi|hello|hey|yo|kumusta|musta|good\s*(morning|afternoon|evening)|magandang\s*(umaga|hapon|gabi))[\s!.,?]*$/i.test(
-      q
+      q,
     );
 
   if (isGreeting) {
@@ -860,19 +806,10 @@ function replyFromWiki(userText, plant, detected, wiki) {
 
   if (name && wikiBit) {
     if (fil) {
-      parts.push(
-        `Tungkol sa **${name}**: ${wikiBit}`
-      );
+      parts.push(`Tungkol sa **${name}**: ${wikiBit}`);
     } else {
       parts.push(`About **${name}**: ${wikiBit}`);
     }
-  } else if (name && detected?.care) {
-    // Local dictionary only as soft supplement when wiki missing
-    parts.push(
-      fil
-        ? `Para sa **${name}**: ${detected.care}`
-        : `For **${name}**: ${detected.care}`
-    );
   }
 
   // Intent-based practical tips (natural sentences, not JSON fields)
@@ -880,31 +817,29 @@ function replyFromWiki(userText, plant, detected, wiki) {
     parts.push(
       fil
         ? `Sa pagdidilig${name ? ` ng ${name}` : ""}: diligan kapag tuyo na ang itaas na 2–3 cm ng lupa. Mas okay ang deep watering minsan kaysa basang-basa araw-araw, at iwasan ang tubig na naiipon sa baso.`
-        : `Watering tip${name ? ` for ${name}` : ""}: water when the top 2–3 cm of soil feels dry. Deep, less frequent watering beats daily light sprinkles — empty saucers so roots don’t sit wet.`
+        : `Watering tip${name ? ` for ${name}` : ""}: water when the top 2–3 cm of soil feels dry. Deep, less frequent watering beats daily light sprinkles — empty saucers so roots don’t sit wet.`,
     );
   }
   if (wantsLight) {
     parts.push(
       fil
         ? `Para sa liwanag${name ? ` ng ${name}` : ""}: karamihan ng indoor plants gusto ng bright indirect light; fruit trees at sun crops (mangga, kamatis) kailangan ng full sun nang 6+ oras.`
-        : `Light tip${name ? ` for ${name}` : ""}: most houseplants like bright indirect light; fruit trees and sun crops need 6+ hours of direct sun.`
+        : `Light tip${name ? ` for ${name}` : ""}: most houseplants like bright indirect light; fruit trees and sun crops need 6+ hours of direct sun.`,
     );
   }
   if (wantsSoil) {
     parts.push(
       fil
         ? `Sa lupa: gumamit ng well-draining mix (lupa + compost + buhangin/perlite). Huwag sobrang denseng putik para hindi mabulok ang ugat.`
-        : `Soil tip: use a well-draining mix (soil + compost + sand/perlite). Heavy clay that stays wet invites root rot.`
+        : `Soil tip: use a well-draining mix (soil + compost + sand/perlite). Heavy clay that stays wet invites root rot.`,
     );
   }
   if (wantsPlantHow) {
-    if (detected?.plant) {
-      parts.push(fil ? `Pagtatanim: ${detected.plant}` : `Planting: ${detected.plant}`);
-    } else {
+    if (wikiBit) {
       parts.push(
         fil
-          ? `Kapag magtatanim${name ? ` ng ${name}` : ""}: piliin ang angkop na liwanag, butas na sapat sa ugat, haluan ng compost, dilig pagkatapos, at mag-mulch sa paligid (huwag idikit sa stem).`
-          : `When planting${name ? ` ${name}` : ""}: match the light needs, dig a hole wide enough for roots, mix in compost, water in well, and mulch without piling against the stem.`
+          ? `Para sa eksaktong pagtatanim, gamitin ang info sa API result sa taas bilang species context, tapos sabihin mo kung seed, cutting, pot, o lupa sa bakuran ang plano mo.`
+          : `For exact planting steps, use the API result above as species context, then tell me whether you are using seed, cutting, a pot, or open ground.`,
       );
     }
   }
@@ -914,20 +849,10 @@ function replyFromWiki(userText, plant, detected, wiki) {
       parts.push(
         fil
           ? `Sa praktikal na alaga: bigyan ng sapat na araw, diligan nang deep kapag tuyo ang top soil, at tiyaking may drainage ang lupa — lalo na sa tag-ulan sa Pilipinas.`
-          : `Practically: give it the light it needs, water deeply when the top soil dries, and keep drainage good — especially in wet seasons.`
-      );
-    } else if (detected?.care) {
-      parts.push(
-        fil
-          ? `Praktikal na tips: ${detected.care}`
-          : `Practical tips: ${detected.care}`
+          : `Practically: give it the light it needs, water deeply when the top soil dries, and keep drainage good — especially in wet seasons.`,
       );
     } else {
-      parts.push(
-        fil
-          ? `Basic alaga${name ? ` para sa ${name}` : ""}: tamang liwanag, dilig kapag kailangan, well-draining lupa, alisin ang patay na dahon, at bantayan ang peste.`
-          : `Basic care${name ? ` for ${name}` : ""}: right light, water when needed, well-draining soil, remove dead leaves, and watch for pests.`
-      );
+      parts.push(apiUnavailableReply(userText));
     }
   }
   if (wantsDisease) {
@@ -941,13 +866,13 @@ function replyFromWiki(userText, plant, detected, wiki) {
       parts.push(
         fil
           ? `Kung dilaw ang dahon${name ? ` ng ${name}` : ""}: madalas dahil sa sobra/kulang sa tubig, mahinang liwanag, o kakulangan sa nutrients. Suriin muna ang top soil bago magdagdag ng abono.${diseaseNote}`
-          : `Yellow leaves${name ? ` on ${name}` : ""} often mean over/under-watering, low light, or nutrient stress. Check soil moisture before adding fertilizer.${diseaseNote}`
+          : `Yellow leaves${name ? ` on ${name}` : ""} often mean over/under-watering, low light, or nutrient stress. Check soil moisture before adding fertilizer.${diseaseNote}`,
       );
     } else {
       parts.push(
         fil
           ? `Para sa sakit o peste${name ? ` sa ${name}` : ""}: alisin ang apektadong dahon, pagandahin ang airflow, huwag basain ang dahon sa gabi.${diseaseNote}`
-          : `For disease or pests${name ? ` on ${name}` : ""}: remove affected leaves, improve airflow, and avoid wetting foliage at night.${diseaseNote}`
+          : `For disease or pests${name ? ` on ${name}` : ""}: remove affected leaves, improve airflow, and avoid wetting foliage at night.${diseaseNote}`,
       );
     }
   }
@@ -956,13 +881,13 @@ function replyFromWiki(userText, plant, detected, wiki) {
       parts.push(
         fil
           ? `Base sa available info, mukhang **${name}**${detected?.scientific ? ` (*${detected.scientific}*)` : ""}.`
-          : `From available info, this looks like **${name}**${detected?.scientific ? ` (*${detected.scientific}*)` : ""}.`
+          : `From available info, this looks like **${name}**${detected?.scientific ? ` (*${detected.scientific}*)` : ""}.`,
       );
     } else {
       parts.push(
         fil
           ? "Para malaman ang exact pangalan mula sa picture, mag-upload at pindutin ang **Scan Plant**. Samantala, sabihin mo ang itsura (dahon, bulaklak) o tanungin nang general."
-          : "To identify from a photo, upload and tap **Scan Plant**. Or describe the leaf/flower and I’ll help generally."
+          : "To identify from a photo, upload and tap **Scan Plant**. Or describe the leaf/flower and I’ll help generally.",
       );
     }
   }
@@ -972,19 +897,19 @@ function replyFromWiki(userText, plant, detected, wiki) {
       parts.push(
         fil
           ? `Eto ang alam ko tungkol sa **${name || "halaman na ito"}**: ${wikiBit} Magtanong ka pa about dilig, liwanag, o pagtatanim.`
-          : `Here’s what I know about **${name || "this plant"}**: ${wikiBit} Ask me about watering, light, or planting for more.`
+          : `Here’s what I know about **${name || "this plant"}**: ${wikiBit} Ask me about watering, light, or planting for more.`,
       );
     } else if (name) {
       parts.push(
         fil
-          ? `Pwede kitang tulungan tungkol sa **${name}** — tanungin mo ako about pagdidilig, liwanag, lupa, sakit, o pagtatanim.`
-          : `I can help with **${name}** — ask about watering, light, soil, disease, or planting.`
+          ? `Nakilala ko ang topic na **${name}**, pero wala akong nakuha na API result para dito ngayon. Subukan ang mas specific na pangalan o i-scan ang halaman para sa API-based context.`
+          : `I detected **${name}**, but I did not get an API result for it right now. Try a more specific name or scan the plant for API-based context.`,
       );
     } else {
       parts.push(
         fil
           ? "Sabihin mo ang pangalan ng halaman o ang problema (hal. dilaw na dahon, paano magtanim ng mangga). Sasagot ako gamit ang live plant info mula sa web kapag available."
-          : "Tell me the plant name or problem (e.g. yellow leaves, how to plant mango). I’ll answer with live web plant info when available."
+          : "Tell me the plant name or problem (e.g. yellow leaves, how to plant mango). I’ll answer with live web plant info when available.",
       );
     }
   }
@@ -1001,37 +926,84 @@ function replyFromWiki(userText, plant, detected, wiki) {
 }
 
 /**
- * Last-resort local tips when Wikipedia + HF both unavailable.
+ * Last-resort response when Wikipedia + HF both unavailable.
+ * This intentionally does not use local/static plant tips.
  */
 function localPlantReply(userText, plant) {
-  const detected = detectMentionedPlant(userText, plant);
-  return replyFromWiki(userText, plant, detected, null);
+  return apiUnavailableReply(userText);
 }
 
+function apiUnavailableReply(userText) {
+  return isFilipinoQuestion(userText)
+    ? "Wala akong nakuha na sagot mula sa API ngayon, kaya hindi ako magbibigay ng static/local na tips. Subukan ulit, maglagay ng mas specific na pangalan ng halaman, o i-check ang `HF_TOKEN` para AI API ang sumagot."
+    : "I did not get an answer from the API right now, so I will not give static/local tips. Try again, use a more specific plant name, or check `HF_TOKEN` so the AI API can answer.";
+}
+
+function hashText(text) {
+  return String(text || "")
+    .split("")
+    .reduce((sum, ch) => {
+      return (sum * 31 + ch.charCodeAt(0)) >>> 0;
+    }, 7);
+}
+
+function pickVariant(items, seedText) {
+  return items[hashText(seedText) % items.length];
+}
+
+function offTopicReply(userText) {
+  const fil = isFilipinoQuestion(userText);
+  const replies = fil
+    ? [
+        "Plant Buddy ako, kaya sa halaman at puno lang muna ako sasagot. Pwede mo akong tanungin tungkol sa pagdidilig, lupa, liwanag, peste, sakit ng dahon, o paano magtanim.",
+        'Labas na iyan sa garden ko. Para malinaw ang scope, tungkol lang ako sa halaman at puno. Subukan mo: "Bakit naninilaw ang dahon?" o "Paano magtanim ng mangga?"',
+        "Hindi ako sasagot sa ibang topic, pero game ako sa kahit anong tanong tungkol sa halaman o puno: alaga, propagation, pruning, peste, sakit, lupa, o araw.",
+      ]
+    : [
+        "I'm Plant Buddy, so I only answer questions about plants and trees. Ask me about watering, soil, light, pests, leaf disease, propagation, or planting.",
+        "That is outside my scope. I can help with plant and tree care, gardening, soil, watering, pests, diseases, propagation, and plant facts.",
+        "I keep this chat focused on plants and trees. Try asking about yellow leaves, watering schedules, soil mixes, pruning, or how to grow a specific plant.",
+      ];
+
+  return pickVariant(replies, userText);
+}
 /**
  * @param {{ message: string, history?: array, plant?: object|null, hfToken?: string }} opts
  */
-async function answerPlantChat({ message, history = [], plant = null, hfToken = "" }) {
+async function answerPlantChat({
+  message,
+  history = [],
+  plant = null,
+  hfToken = "",
+}) {
   const userMessage = String(message || "").trim();
   if (!userMessage) {
-    throw new Error("Walang tanong. Mag-type ng mensahe tungkol sa puno o halaman.");
+    throw new Error(
+      "Walang tanong. Mag-type ng mensahe tungkol sa puno o halaman.",
+    );
   }
   if (userMessage.length > 2000) {
     throw new Error("Masyadong mahaba ang tanong (max 2000 characters).");
   }
 
-  if (!isPlantTopicMessage(userMessage, plant)) {
+  // Detected from scan context (if present)
+  const detected = detectMentionedPlant(userMessage, plant);
+  // Detected directly from the question text (ignore scan)
+  const detectedFromQuestion = detectMentionedPlant(userMessage, null);
+
+  // Require the MESSAGE itself to be plant-related (either detected from the
+  // question or matching plant-related keywords). Ignore presence of a
+  // previously scanned `plant` when deciding to reject a non-plant question.
+  if (!detectedFromQuestion && !isPlantRelatedText(userMessage)) {
     return {
-      reply: outOfScopeReply(userMessage),
-      provider: "scope-filter",
+      reply: offTopicReply(userMessage),
+      provider: "scope-guard",
       model: null,
       offline: true,
-      source: "scope-filter",
-      note: "Plant/tree questions only",
+      source: "scope",
+      note: "Tanong lang tungkol sa halaman o puno. Hindi sumasagot ang Plant Buddy sa ibang paksa.",
     };
   }
-
-  const detected = detectMentionedPlant(userMessage, plant);
 
   // Always pull LIVE Wikipedia context first (dynamic, not static JSON)
   let wiki = null;
@@ -1044,7 +1016,7 @@ async function answerPlantChat({ message, history = [], plant = null, hfToken = 
   const messages = normalizeMessages(
     [...history, { role: "user", content: userMessage }],
     plant,
-    wiki
+    wiki,
   );
 
   // 1) Prefer live Hugging Face chat API (true dynamic natural language)
@@ -1059,7 +1031,10 @@ async function answerPlantChat({ message, history = [], plant = null, hfToken = 
         source: wiki ? "ai+wikipedia" : "ai",
       };
     } catch (err) {
-      console.warn("HF chat failed, using Wikipedia/dynamic fallback:", err?.message || err);
+      console.warn(
+        "HF chat failed, using Wikipedia/dynamic fallback:",
+        err?.message || err,
+      );
       // 2) Dynamic Wikipedia-shaped reply (still not static JSON dump)
       if (wiki?.description) {
         return {
@@ -1074,14 +1049,14 @@ async function answerPlantChat({ message, history = [], plant = null, hfToken = 
         };
       }
       return {
-        reply: replyFromWiki(userMessage, plant, detected, null),
-        provider: "local-fallback",
+        reply: apiUnavailableReply(userMessage),
+        provider: "api-unavailable",
         model: null,
         offline: true,
-        source: "local",
+        source: "none",
         note:
           err.message ||
-          "AI chat unavailable — temporary local tips.",
+          "AI chat unavailable at walang Wikipedia hit. Hindi gumagamit ng local/static plant knowledge para sa sagot.",
       };
     }
   }
@@ -1099,12 +1074,12 @@ async function answerPlantChat({ message, history = [], plant = null, hfToken = 
   }
 
   return {
-    reply: replyFromWiki(userMessage, plant, detected, null),
-    provider: "local",
+    reply: apiUnavailableReply(userMessage),
+    provider: "api-unavailable",
     model: null,
     offline: true,
-    source: "local",
-    note: "Walang HF_TOKEN / Wikipedia hit — basic tips. Mag-set ng HF_TOKEN sa server/.env para dynamic AI.",
+    source: "none",
+    note: "Walang HF_TOKEN / Wikipedia hit. Hindi gumagamit ng local/static plant knowledge para sa sagot.",
   };
 }
 
@@ -1113,7 +1088,6 @@ module.exports = {
   buildSystemPrompt,
   localPlantReply,
   detectMentionedPlant,
-  isPlantTopicMessage,
   fetchDynamicPlantContext,
   replyFromWiki,
   PLANT_KNOWLEDGE,
