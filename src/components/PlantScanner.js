@@ -21,6 +21,80 @@ import {
   analyzePlantRegions,
 } from "../utils/plantDetect";
 
+const SCAN_MEMORY_KEY = "plantBuddy.scannedPlants";
+const ACTIVE_PLANT_KEY = "plantBuddy.activePlantKey";
+const ACTIVE_PLANT_DATA_KEY = "plantBuddy.activePlant";
+
+function plantMemoryKey(plant) {
+  return [
+    plant?.scientificName || "",
+    plant?.commonName || "",
+    plant?.commonNameFilipino || "",
+  ]
+    .join("|")
+    .toLowerCase();
+}
+
+function loadJson(key, fallback) {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "null");
+    return parsed == null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveLocalPlant(plant, imageDataUrl = "") {
+  if (!plant || plant.isPlant === false) return;
+
+  try {
+    const savedAt = plant.savedAt || new Date().toISOString();
+    const savedPlant = { ...plant, savedAt };
+    const key = plantMemoryKey(savedPlant);
+    const previous = Array.isArray(loadJson(SCAN_MEMORY_KEY, []))
+      ? loadJson(SCAN_MEMORY_KEY, [])
+      : [];
+    const withoutDuplicate = previous.filter(
+      (item) => plantMemoryKey(item) !== key
+    );
+    const next = [
+      { ...savedPlant, imageDataUrl },
+      ...withoutDuplicate,
+    ].slice(0, 100);
+
+    window.localStorage.setItem(SCAN_MEMORY_KEY, JSON.stringify(next));
+    window.localStorage.setItem(ACTIVE_PLANT_KEY, key);
+    window.localStorage.setItem(ACTIVE_PLANT_DATA_KEY, JSON.stringify(savedPlant));
+  } catch {
+    // Local memory is a convenience fallback; the app can continue without it.
+  }
+}
+
+function loadActivePlant() {
+  const activePlant = loadJson(ACTIVE_PLANT_DATA_KEY, null);
+  if (activePlant) return activePlant;
+
+  const activeKey = (() => {
+    try {
+      return window.localStorage.getItem(ACTIVE_PLANT_KEY) || "";
+    } catch {
+      return "";
+    }
+  })();
+  const savedPlants = loadJson(SCAN_MEMORY_KEY, []);
+  if (!activeKey || !Array.isArray(savedPlants)) return null;
+  return savedPlants.find((item) => plantMemoryKey(item) === activeKey) || null;
+}
+
+function clearActivePlant() {
+  try {
+    window.localStorage.removeItem(ACTIVE_PLANT_KEY);
+    window.localStorage.removeItem(ACTIVE_PLANT_DATA_KEY);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 /**
  * Main plant scanner screen: camera/upload, single-plant gate, identify.
  * Preview stays natural (no green highlight paint on the photo).
@@ -35,7 +109,7 @@ function PlantScanner() {
   const [liveDetect, setLiveDetect] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [plant, setPlant] = useState(null);
+  const [plant, setPlant] = useState(loadActivePlant);
   const [apiReady, setApiReady] = useState(null);
   const [view, setView] = useState(() =>
     window.location.hash === "#history" ? "history" : "scanner"
@@ -237,12 +311,18 @@ function PlantScanner() {
       const result = await identifyPlantApi(preview);
       setPlant(result);
       if (result?.isPlant !== false) {
+        saveLocalPlant(result);
+        let historyImage = "";
         try {
-          const historyImage = await toJpegDataUrl(preview, 640, 0.72);
+          historyImage = await toJpegDataUrl(preview, 640, 0.72);
+          saveLocalPlant(result, historyImage);
           await saveScanHistory({ plant: result, imageDataUrl: historyImage });
         } catch (historyErr) {
+          saveLocalPlant(result, historyImage);
           console.warn("History save skipped:", historyErr);
         }
+      } else {
+        clearActivePlant();
       }
     } catch (err) {
       console.error(err);
@@ -261,11 +341,13 @@ function PlantScanner() {
     setLiveDetect(null);
     setPlant(null);
     setError("");
+    clearActivePlant();
   };
 
   const clearResult = () => {
     setPlant(null);
     setError("");
+    clearActivePlant();
   };
 
   const openHistory = () => {
@@ -283,6 +365,7 @@ function PlantScanner() {
 
   const openSavedPlant = (savedPlant) => {
     setPlant(savedPlant);
+    saveLocalPlant(savedPlant, savedPlant.imageDataUrl || "");
     setPreview(null);
     setLiveDetect(null);
     setError("");

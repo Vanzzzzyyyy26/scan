@@ -361,7 +361,31 @@ function isPlantRelatedText(text) {
     return true;
   }
 
-  return /\b(?:plant|tree|halaman|puno|dahon|bulaklak|ugat|lupa|tubig|dilig|abono|pataba|sakit|peste|fungus|flower|leaf|soil|light|shade|tanim|magtanim|alaga|care|fruit|seed|garden|propagate|bloom|flowering|bonsai|fern|orchid|cactus|herb|weed|crop|seedling|sprout|stem|branch|bark|root|mulch|watering)\b/i.test(
+  return /\b(?:plant|tree|halaman|puno|dahon|bulaklak|ugat|lupa|tubig|dilig|diligan|didilig|didiligan|abono|pataba|sakit|peste|fungus|flower|leaf|soil|light|shade|tanim|magtanim|alaga|care|fruit|seed|garden|propagate|bloom|flowering|bonsai|fern|orchid|cactus|herb|weed|crop|seedling|sprout|stem|branch|bark|root|mulch|watering|description|describe|details|info|impormasyon|pangalan|name|scientific|family)\b/i.test(
+    q,
+  );
+}
+
+function isContextualPlantFollowUp(text, plant) {
+  if (!plant || plant.isPlant === false) return false;
+  const q = String(text || "").toLowerCase().trim();
+  if (!q) return false;
+
+  if (isScanIdentityQuestion(q, plant)) return true;
+
+  return /\b(?:ito|nito|iyan|yan|yung|nya|niya|this|it|that|scan|scanned|result|description|describe|details|info|impormasyon|pangalan|name|scientific|family|care|alaga|dilig|diligan|tubig|araw|liwanag|lupa|sakit|peste)\b/i.test(
+    q,
+  );
+}
+
+function isScanIdentityQuestion(text, plant) {
+  if (!plant || plant.isPlant === false) return false;
+  const q = String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[?!.,]+$/g, "");
+
+  return /^(?:what\s+is|what\s+is\s+this|what\s+plant\s+is\s+this|what\s+tree\s+is\s+this|what\s+is\s+the\s+plant|what\s+is\s+the\s+tree|ano\s+(?:ito|to|yan|iyan)|anong\s+(?:halaman|puno)(?:\s+(?:ito|to|yan|iyan))?|ano\s+ang\s+(?:pangalan|name)(?:\s+nito)?|pangalan\s+nito|name\s+(?:nito|this|it))$/.test(
     q,
   );
 }
@@ -933,6 +957,108 @@ function localPlantReply(userText, plant) {
   return apiUnavailableReply(userText);
 }
 
+function replyFromScanContext(userText, plant, detected = null) {
+  if (!plant || plant.isPlant === false) return "";
+
+  const q = String(userText || "").toLowerCase();
+  const fil = isFilipinoQuestion(userText);
+  const name =
+    plant.commonNameFilipino ||
+    plant.commonName ||
+    plant.scientificName ||
+    detected?.name ||
+    "halaman na na-scan";
+  const scientific = plant.scientificName ? ` (*${plant.scientificName}*)` : "";
+  const parts = [];
+
+  parts.push(
+    fil
+      ? `Base sa huling scan mo, ang context ko ay **${name}**${scientific}.`
+      : `Based on your last scan, my context is **${name}**${scientific}.`
+  );
+
+  if (plant.description) {
+    parts.push(
+      fil
+        ? `Description: ${String(plant.description).slice(0, 520)}`
+        : `Description: ${String(plant.description).slice(0, 520)}`
+    );
+  }
+
+  if (
+    isScanIdentityQuestion(q, plant) ||
+    /description|describe|details|info|impormasyon|pangalan|name|scientific|family/.test(q)
+  ) {
+    if (plant.family) {
+      parts.push(fil ? `Family: ${plant.family}` : `Family: ${plant.family}`);
+    }
+    if (plant.confidence || typeof plant.score === "number") {
+      const score =
+        typeof plant.score === "number"
+          ? `${Math.round(plant.score * 100)}%`
+          : plant.confidence;
+      parts.push(
+        fil
+          ? `Scan confidence: ${score}.`
+          : `Scan confidence: ${score}.`
+      );
+    }
+  }
+
+  if (/dilig|water|tubig|moisture|basa|tuyo/.test(q)) {
+    parts.push(
+      fil
+        ? "Sa pagdidilig: kapain muna ang top 2-3 cm ng lupa. Kung tuyo, diligan nang deep hanggang lumabas sa drainage; kung basa pa, hintayin muna para iwas root rot."
+        : "For watering: check the top 2-3 cm of soil first. If dry, water deeply until drainage runs; if still damp, wait to avoid root rot."
+    );
+  }
+
+  if (/araw|sun|liwanag|light|shade|indoor|outdoor/.test(q)) {
+    parts.push(
+      fil
+        ? "Sa liwanag: kung puno o fruiting plant ito, mas kailangan ng maraming araw; kung ornamental/indoor, magsimula sa bright indirect light at obserbahan kung nasusunog o humihina ang dahon."
+        : "For light: trees and fruiting plants usually need more sun; ornamentals/houseplants are safer starting in bright indirect light while you watch for leaf burn or weak growth."
+    );
+  }
+
+  if (/lupa|soil|compost|abono|fertiliz|pataba/.test(q)) {
+    parts.push(
+      fil
+        ? "Sa lupa: gumamit ng well-draining mix na may organic matter. Iwasan ang siksik at laging basang lupa dahil doon madalas nagsisimula ang pagkabulok ng ugat."
+        : "For soil: use a well-draining mix with organic matter. Avoid dense soil that stays wet because that often starts root problems."
+    );
+  }
+
+  if (/sakit|disease|pest|peste|insekto|dilaw|yellow|lanta|wilting|fungus/.test(q)) {
+    const diseaseName = plant.disease?.name || plant.disease?.condition || "";
+    if (diseaseName && plant.disease?.status !== "healthy") {
+      parts.push(
+        fil
+          ? `Sa scan, may possible issue na **${diseaseName}**. Alisin ang apektadong dahon kung kaya, pagandahin ang airflow, at iwasang basain ang dahon sa gabi.`
+          : `The scan noted a possible issue: **${diseaseName}**. Remove affected leaves where possible, improve airflow, and avoid wetting leaves at night.`
+      );
+    } else {
+      parts.push(
+        fil
+          ? "Kung may dilaw, lanta, o batik ang dahon, unang i-check ang sobrang/kulang na tubig, drainage, liwanag, at peste sa ilalim ng dahon."
+          : "For yellowing, wilting, or spots, first check over/under-watering, drainage, light, and pests under the leaves."
+      );
+    }
+  }
+
+  if (parts.length < 3) {
+    parts.push(
+      fil
+        ? "Pwede mo akong tanungin nang mas specific tungkol sa dilig, araw, lupa, peste, sakit, pruning, o pagtatanim nito."
+        : "You can ask me more specifically about watering, light, soil, pests, disease, pruning, or planting this scan."
+    );
+  }
+
+  return [...new Set(parts.map((p) => p.trim()).filter(Boolean))]
+    .slice(0, 4)
+    .join("\n\n");
+}
+
 function apiUnavailableReply(userText) {
   return isFilipinoQuestion(userText)
     ? "Wala akong nakuha na sagot mula sa API ngayon, kaya hindi ako magbibigay ng static/local na tips. Subukan ulit, maglagay ng mas specific na pangalan ng halaman, o i-check ang `HF_TOKEN` para AI API ang sumagot."
@@ -991,10 +1117,13 @@ async function answerPlantChat({
   // Detected directly from the question text (ignore scan)
   const detectedFromQuestion = detectMentionedPlant(userMessage, null);
 
-  // Require the MESSAGE itself to be plant-related (either detected from the
-  // question or matching plant-related keywords). Ignore presence of a
-  // previously scanned `plant` when deciding to reject a non-plant question.
-  if (!detectedFromQuestion && !isPlantRelatedText(userMessage)) {
+  // Require a plant-related message unless it is a contextual follow-up about
+  // the active scan, e.g. "description nito" after reload or New Chat.
+  if (
+    !detectedFromQuestion &&
+    !isPlantRelatedText(userMessage) &&
+    !isContextualPlantFollowUp(userMessage, plant)
+  ) {
     return {
       reply: offTopicReply(userMessage),
       provider: "scope-guard",
@@ -1002,6 +1131,17 @@ async function answerPlantChat({
       offline: true,
       source: "scope",
       note: "Tanong lang tungkol sa halaman o puno. Hindi sumasagot ang Plant Buddy sa ibang paksa.",
+    };
+  }
+
+  if (isScanIdentityQuestion(userMessage, plant)) {
+    return {
+      reply: replyFromScanContext(userMessage, plant, detected),
+      provider: "scan-context",
+      model: null,
+      offline: true,
+      source: "scan",
+      note: "Ginamit ang active scanned plant bilang context.",
     };
   }
 
@@ -1046,6 +1186,19 @@ async function answerPlantChat({
           note:
             err.message ||
             "AI chat temporarily unavailable — ginamit ang live Wikipedia.",
+          };
+        }
+      const scanReply = replyFromScanContext(userMessage, plant, detected);
+      if (scanReply) {
+        return {
+          reply: scanReply,
+          provider: "scan-context",
+          model: null,
+          offline: true,
+          source: "scan",
+          note:
+            err.message ||
+            "AI chat unavailable at walang Wikipedia hit. Ginamit ang huling scan bilang context.",
         };
       }
       return {
@@ -1070,6 +1223,18 @@ async function answerPlantChat({
       offline: false,
       source: "wikipedia",
       note: "Live Wikipedia answer (mag-set ng HF_TOKEN para sa full AI chat).",
+    };
+  }
+
+  const scanReply = replyFromScanContext(userMessage, plant, detected);
+  if (scanReply) {
+    return {
+      reply: scanReply,
+      provider: "scan-context",
+      model: null,
+      offline: true,
+      source: "scan",
+      note: "Walang HF_TOKEN / Wikipedia hit. Ginamit ang huling scan bilang context.",
     };
   }
 

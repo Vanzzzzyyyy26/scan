@@ -10,6 +10,22 @@ const QUICK_PROMPTS = [
   "May peste ba ito?",
 ];
 
+const CHAT_MEMORY_KEY = "plantBuddy.chatMessages";
+
+function plantMemoryKey(plant) {
+  return [
+    plant?.scientificName || "",
+    plant?.commonName || "",
+    plant?.commonNameFilipino || "",
+  ]
+    .join("|")
+    .toLowerCase();
+}
+
+function chatMemoryKey(plant) {
+  return `${CHAT_MEMORY_KEY}:${plantMemoryKey(plant) || "general"}`;
+}
+
 function welcomeMessage(plant) {
   if (
     plant &&
@@ -21,6 +37,40 @@ function welcomeMessage(plant) {
     return `Hi! Ako si **Plant Buddy** 🌿\nNaka-scan mo ang **${name}**. Halaman at puno lang ang scope ko, pero dynamic akong sasagot tungkol sa alaga, tubig, liwanag, lupa, peste, o sakit.`;
   }
   return "Hi! Ako si **Plant Buddy** 🌿\nScope ko ay **halaman at puno lang**. Hindi kailangan mag-scan para magtanong — sabihin mo lang ang halaman o problema.\n\nHalimbawa: *Paano magtanim ng mangga?*, *Bakit dilaw ang dahon?*, *Alaga ng monstera*.\n\nKung may picture at gusto mong malaman ang pangalan, saka mag-**Scan Plant**.";
+}
+
+function loadSavedMessages(plant) {
+  try {
+    const raw = window.localStorage.getItem(chatMemoryKey(plant));
+    const parsed = JSON.parse(raw || "[]");
+    if (!Array.isArray(parsed) || !parsed.length) return null;
+    return parsed.filter(
+      (m) =>
+        m &&
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string"
+    );
+  } catch {
+    return null;
+  }
+}
+
+function saveMessages(plant, messages) {
+  try {
+    const saved = messages
+      .filter((m) => m.id !== "welcome")
+      .slice(-30)
+      .map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        meta: m.meta,
+        error: m.error,
+      }));
+    window.localStorage.setItem(chatMemoryKey(plant), JSON.stringify(saved));
+  } catch {
+    // Chat memory is optional; questions still work without localStorage.
+  }
 }
 
 function renderText(text) {
@@ -41,9 +91,13 @@ function PlantChatbot({ plant }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [messages, setMessages] = useState(() => [
-    { id: "welcome", role: "assistant", content: welcomeMessage(null) },
-  ]);
+  const [messages, setMessages] = useState(() => {
+    const saved = loadSavedMessages(plant);
+    return [
+      { id: "welcome", role: "assistant", content: welcomeMessage(plant) },
+      ...(saved || []),
+    ];
+  });
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const plantKeyRef = useRef("");
@@ -55,16 +109,18 @@ function PlantChatbot({ plant }) {
       : "";
     if (key && key !== plantKeyRef.current) {
       plantKeyRef.current = key;
-      setMessages((prev) => {
-        const rest = prev.filter((m) => m.id !== "welcome");
-        return [
-          { id: "welcome", role: "assistant", content: welcomeMessage(plant) },
-          ...rest,
-        ];
-      });
+      const saved = loadSavedMessages(plant);
+      setMessages([
+        { id: "welcome", role: "assistant", content: welcomeMessage(plant) },
+        ...(saved || []),
+      ]);
       setOpen(true);
     }
   }, [plant]);
+
+  useEffect(() => {
+    saveMessages(plant, messages);
+  }, [plant, messages]);
 
   useEffect(() => {
     if (!open) return;
@@ -150,6 +206,20 @@ function PlantChatbot({ plant }) {
     sendMessage(input);
   };
 
+  const startNewChat = () => {
+    const fresh = [
+      { id: "welcome", role: "assistant", content: welcomeMessage(plant) },
+    ];
+    setMessages(fresh);
+    setInput("");
+    setOpen(true);
+    try {
+      window.localStorage.removeItem(chatMemoryKey(plant));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
   const plantLabel = plant?.commonNameFilipino || plant?.commonName || null;
 
   return (
@@ -185,6 +255,15 @@ function PlantChatbot({ plant }) {
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            className="plant-chat-new"
+            onClick={startNewChat}
+            aria-label="Bagong chat"
+          >
+            +
+            <span>New Chat</span>
+          </button>
           <button
             type="button"
             className="plant-chat-close"

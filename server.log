@@ -1,0 +1,11 @@
+
+> image@0.1.0 server
+> node server/index.js
+
+◇ injected env (10) from server\.env // tip: ⌘ override existing { override: true }
+Plant scanner API running on http://localhost:5000
+Listening on 0.0.0.0 — reachable via LAN / Dev Tunnel
+Non-plant filter: reject scores below 15%
+Disease model: linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification (HF token set)
+Serving React build from /build (open this port on phone)
+Provider: PlantNet (free plant identification)

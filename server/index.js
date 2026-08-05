@@ -782,10 +782,29 @@ async function identifyWithPlantNet(imageDataUrl) {
 }
 
 app.get("/api/health", (_req, res) => {
+  const historyConfigured = hasDbConfig();
+  // Booleans only — never expose secret values.
+  const envPresent = {
+    MYSQL_HOST: Boolean(process.env.MYSQL_HOST || process.env.DB_HOST),
+    MYSQL_USER: Boolean(process.env.MYSQL_USER || process.env.DB_USER),
+    MYSQL_PASSWORD: Boolean(
+      process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD
+    ),
+    MYSQL_DATABASE: Boolean(
+      process.env.MYSQL_DATABASE || process.env.DB_DATABASE
+    ),
+    MYSQL_URL: Boolean(process.env.MYSQL_URL || process.env.DATABASE_URL),
+    PLANTNET_API_KEY: Boolean(PLANTNET_KEY),
+    HF_TOKEN: Boolean(HF_TOKEN),
+  };
+
   let message;
   if (!PLANTNET_KEY) {
     message =
       "Add free PLANTNET_API_KEY to server/.env — https://my.plantnet.org/";
+  } else if (!historyConfigured && process.env.VERCEL) {
+    message =
+      "Running on Vercel but MySQL env vars are missing. Add MYSQL_HOST/USER/PASSWORD/DATABASE in Project Settings → Environment Variables, then Redeploy.";
   } else if (!HF_TOKEN) {
     message =
       "PlantNet ready. HF_TOKEN = dynamic AI chat + better disease check — https://huggingface.co/settings/tokens";
@@ -800,7 +819,9 @@ app.get("/api/health", (_req, res) => {
     hasDiseaseCheck: true,
     hasHfToken: Boolean(HF_TOKEN),
     hasDynamicChat: true,
-    hasHistoryDb: hasDbConfig(),
+    hasHistoryDb: historyConfigured,
+    envPresent,
+    onVercel: Boolean(process.env.VERCEL),
     minPlantScore: MIN_PLANT_SCORE,
     provider: PLANTNET_KEY ? "plantnet" : "none",
     message,
